@@ -69,8 +69,15 @@ CODEX_DIRS = CFG["codex_dirs"]
 
 # 每個 agent 記住自己「正在接哪個對話」+「該從哪個目錄跑」(resume 綁 cwd)
 STATE = {"claude": {"id": None, "cwd": HERE}, "codex": {"id": None, "cwd": HERE}}
-# 共用協作設定:兩個 agent 一起做的真實專案目錄 + 是否允許改檔
-SETTINGS = {"project": None, "write": False}
+# 共用協作設定:兩個 agent 一起做的真實專案目錄
+SETTINGS = {"project": None}
+# 每個 agent 各自的 model / mode / effort(像 Claude Code 底部那排控制)
+AGENT_CFG = {
+    "claude": {"model": "", "mode": "default", "effort": ""},
+    "codex": {"model": "", "mode": "read-only", "effort": ""},
+}
+# 哪些 mode 代表「可以改檔」(給照妖鏡判斷是否該比對磁碟變動)
+_WRITABLE = {"acceptEdits", "bypassPermissions", "auto", "dontAsk", "workspace-write", "danger-full-access"}
 LOCK = threading.Lock()
 
 # 每百萬 token 美金定價(來自 mercury-cache-panel)
@@ -131,12 +138,15 @@ def ask_claude(text):
                 "ms": 0, "meta": {}}
     with LOCK:
         sid, cwd = STATE["claude"]["id"], STATE["claude"]["cwd"]
-        write = SETTINGS["write"]
+        cfg = dict(AGENT_CFG["claude"])
     cmd = [CLAUDE_BIN, "-p", text, "--output-format", "json"]
     if sid:
         cmd += ["--resume", sid]
-    if write:
-        cmd += ["--permission-mode", "acceptEdits"]
+    cmd += ["--permission-mode", cfg["mode"] or "default"]
+    if cfg["model"]:
+        cmd += ["--model", cfg["model"]]
+    if cfg["effort"]:
+        cmd += ["--effort", cfg["effort"]]
     rc, out, err = run(cmd, cwd)
     try:
         d = json.loads(out)
@@ -158,11 +168,15 @@ def ask_codex(text):
                 "ms": 0, "meta": {}}
     with LOCK:
         tid, cwd = STATE["codex"]["id"], STATE["codex"]["cwd"]
-        write = SETTINGS["write"]
-    mode = "workspace-write" if write else "read-only"
+        cfg = dict(AGENT_CFG["codex"])
+    mode = cfg["mode"] or "read-only"
     flags = ["--json", "--skip-git-repo-check", "-c", f"sandbox_mode={mode}"]
-    if write:
+    if mode in _WRITABLE:
         flags += ["-c", "approval_policy=never"]
+    if cfg["model"]:
+        flags += ["-m", cfg["model"]]
+    if cfg["effort"]:
+        flags += ["-c", f"model_reasoning_effort={cfg['effort']}"]
     if tid:
         cmd = [CODEX_BIN, "exec", "resume", tid] + flags + [text]
     else:
@@ -189,7 +203,8 @@ def ask_codex(text):
 def handle_send(target, text):
     out, threads = {}, []
     with LOCK:
-        proj, write = SETTINGS["project"], SETTINGS["write"]
+        proj = SETTINGS["project"]
+        writable = {e: (AGENT_CFG[e]["mode"] in _WRITABLE) for e in AGENT_CFG}
     before = _snapshot(proj) if proj else {}
     jobs = [j for j in (("claude", ask_claude), ("codex", ask_codex))
             if target in (j[0], "both")]
@@ -202,7 +217,7 @@ def handle_send(target, text):
     changed = _diff(before, _snapshot(proj)) if proj else []
     for name, res in out.items():
         if res and res.get("ok"):
-            record_behavior(name, res.get("text", ""), proj, changed, write)
+            record_behavior(name, res.get("text", ""), proj, changed, writable.get(name, False))
     return out
 
 
@@ -622,8 +637,10 @@ class H(BaseHTTPRequestHandler):
             self._send(200, json.dumps(STATE))
         elif u.path == "/api/project":
             self._send(200, json.dumps({
-                "project": SETTINGS["project"], "write": SETTINGS["write"],
+                "project": SETTINGS["project"],
                 "claude_cwd": STATE["claude"]["cwd"], "codex_cwd": STATE["codex"]["cwd"]}))
+        elif u.path == "/api/agent-config":
+            self._send(200, json.dumps(AGENT_CFG))
         elif u.path == "/api/tokens":
             now = time.time()
             if _TOK_CACHE["data"] and now - _TOK_CACHE["ts"] < 10:
@@ -682,19 +699,26 @@ class H(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"ok": True}))
         elif self.path == "/api/project":
             path = (req.get("path") or "").strip()
-            write = bool(req.get("write"))
             if path and not os.path.isdir(os.path.expanduser(path)):
                 self._send(400, json.dumps({"error": f"目錄不存在: {path}"})); return
             path = os.path.expanduser(path) if path else None
             with LOCK:
                 changed = path is not None and path != SETTINGS["project"]
                 SETTINGS["project"] = path
-                SETTINGS["write"] = write
                 if changed:  # 只有「換專案」才讓兩個 agent 在新目錄重新開始
                     for e in STATE:
                         STATE[e]["cwd"] = path
                         STATE[e]["id"] = None
-            self._send(200, json.dumps({"ok": True, "project": path, "write": write}))
+            self._send(200, json.dumps({"ok": True, "project": path}))
+        elif self.path == "/api/agent-config":
+            eng = req.get("engine")
+            if eng not in AGENT_CFG:
+                self._send(400, json.dumps({"error": "bad engine"})); return
+            with LOCK:
+                for k in ("model", "mode", "effort"):
+                    if k in req:
+                        AGENT_CFG[eng][k] = req[k] or ("default" if k == "mode" and eng == "claude" else ("read-only" if k == "mode" else ""))
+            self._send(200, json.dumps({"ok": True, "cfg": AGENT_CFG[eng]}))
         elif self.path == "/api/clear-context":
             # 清空 cache=重置該 agent 的 session,下一則用新 session 開始,
             # 不再背著累積的上下文重複 cache(等同對 Claude Code 送 /clear)

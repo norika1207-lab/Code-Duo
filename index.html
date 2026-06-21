@@ -14,7 +14,15 @@
   html,body{width:100%;overflow-x:hidden}
   body{margin:0;height:100vh;width:100vw;overflow:hidden;display:flex;flex-direction:column;
        background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,"PingFang TC",system-ui,sans-serif}
-  header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line)}
+  header{display:flex;align-items:center;gap:12px;padding:5px 14px;border-bottom:1px solid var(--line)}
+  button.mini{padding:3px 9px;font-size:11px;border-radius:6px}
+  /* 每欄底部控制條:model / mode / effort / 用量(仿 Claude Code 底部) */
+  .cfgbar{display:flex;align-items:center;gap:7px;padding:5px 12px;border-top:1px solid var(--line);
+          background:#101218;flex:none}
+  .cfgbar select{background:#1a1d26;color:var(--txt);border:1px solid var(--line);border-radius:6px;
+                 padding:3px 6px;font-size:11px;cursor:pointer;max-width:120px}
+  .cfgbar select:hover{border-color:#3a3f50}
+  .cfgbar .usechip{margin-left:auto;font-size:11px;color:var(--dim)}
   .brand{display:flex;align-items:center;gap:8px}
   .brand .mark{display:block;flex:none}
   header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
@@ -115,7 +123,6 @@
   .msg .act:hover{border-color:var(--user);color:#fff}
   .projlabel{font-size:11px;color:var(--dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;
              white-space:nowrap}
-  #writetoggle.on{background:#5a1d1d;border-color:#a33;color:#ffd0d0}
   .divider{align-self:center;color:var(--dim);font-size:11px;border-top:1px dashed var(--line);
            width:100%;text-align:center;padding-top:8px}
 
@@ -151,9 +158,8 @@
     <span class="sub">Claude × Codex · 同窗協作 · 走訂閱不走 API</span>
     <div class="right">
       <span id="projlabel" class="projlabel" title="兩個 agent 共用的專案目錄">專案: 未設定</span>
-      <button id="setproj">設定專案</button>
-      <button id="writetoggle" title="允許 agent 直接改檔(危險)">唯讀</button>
-      <button id="reset">清空當前對話</button>
+      <button id="setproj" class="mini">設定專案</button>
+      <button id="reset" class="mini">清空對話</button>
     </div>
   </header>
 
@@ -173,12 +179,14 @@
     <div class="col claude">
       <h2><span class="dot"></span>Claude<span class="tag" id="t-claude">idle</span></h2>
       <div class="log" id="log-claude"></div>
+      <div class="cfgbar" data-e="claude"></div>
     </div>
 
     <!-- 中右：Codex 對話 -->
     <div class="col codex">
       <h2><span class="dot"></span>Codex<span class="tag" id="t-codex">idle</span></h2>
       <div class="log" id="log-codex"></div>
+      <div class="cfgbar" data-e="codex"></div>
     </div>
 
     <!-- 最右：Codex 歷史 -->
@@ -188,7 +196,6 @@
     </div>
   </div>
 
-  <div class="hint">左右兩側點一個舊 session 就接續它續聊。按 <b>Tab</b> 切換對象(Claude → Codex → Both，左下按鈕跟著亮)；Enter 送出，Shift+Enter 換行。</div>
   <footer>
     <div class="targets">
       <button data-t="claude">Claude</button>
@@ -317,22 +324,19 @@ document.getElementById("reset").onclick=async()=>{
   document.querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
 };
 
-// ---- 共用專案目錄 + 可改檔 ----
-let curProject=null,curWrite=false;
+// ---- 共用專案目錄 ----
+let curProject=null;
 const projlabel=document.getElementById("projlabel");
-const writeBtn=document.getElementById("writetoggle");
 function renderProj(){
   projlabel.textContent="專案: "+(curProject?curProject.replace(/^.*\/([^/]+)\/?$/,"$1"):"未設定");
   projlabel.title=curProject||"兩個 agent 共用的專案目錄";
-  writeBtn.textContent=curWrite?"可改檔":"唯讀";
-  writeBtn.classList.toggle("on",curWrite);
 }
 async function postProj(){
   const r=await fetch("/api/project",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({path:curProject||"",write:curWrite})});
+    body:JSON.stringify({path:curProject||""})});
   const d=await r.json();
   if(d.error){alert(d.error);return false;}
-  curProject=d.project;curWrite=d.write;renderProj();return true;
+  curProject=d.project;renderProj();return true;
 }
 document.getElementById("setproj").onclick=async()=>{
   const p=prompt("兩個 agent 一起工作的專案目錄(絕對路徑)：",curProject||"/Volumes/ADATA/dev/");
@@ -342,11 +346,39 @@ document.getElementById("setproj").onclick=async()=>{
   else{logs.claude.innerHTML="";logs.codex.innerHTML="";
     add("claude","sys","",`已切到專案 ${curProject||"(無)"}`);add("codex","sys","",`已切到專案 ${curProject||"(無)"}`);}
 };
-writeBtn.onclick=async()=>{
-  if(!curWrite&&!confirm("開啟『可改檔』後,兩個 agent 會直接修改專案裡的檔案\n(Codex workspace-write、Claude 自動接受編輯)。\n確定?"))return;
-  curWrite=!curWrite;await postProj();
+(async()=>{try{const d=await(await fetch("/api/project")).json();curProject=d.project;renderProj();}catch(e){}})();
+
+// ---- 每欄底部:model / mode / effort 控制(接到引擎 CLI flag) ----
+const CFG_OPTS={
+  claude:{
+    model:[["","模型·預設"],["opus","Opus 4.8"],["sonnet","Sonnet 4.6"],["haiku","Haiku 4.5"]],
+    mode:[["default","Default"],["acceptEdits","Accept edits"],["plan","Plan"],["bypassPermissions","Bypass"]],
+    effort:[["","Effort·預設"],["low","Low"],["medium","Medium"],["high","High"]]
+  },
+  codex:{
+    model:[["","模型·預設"],["gpt-5.5","GPT-5.5"],["gpt-5","GPT-5"],["o3","o3"]],
+    mode:[["read-only","Read-only"],["workspace-write","Workspace-write"]],
+    effort:[["","Effort·預設"],["low","Low"],["medium","Medium"],["high","High"],["xhigh","xHigh"]]
+  }
 };
-(async()=>{try{const d=await(await fetch("/api/project")).json();curProject=d.project;curWrite=d.write;renderProj();}catch(e){}})();
+function buildSelect(engine,kind,cur){
+  const sel=document.createElement("select");sel.title=kind;
+  CFG_OPTS[engine][kind].forEach(([v,label])=>{
+    const o=document.createElement("option");o.value=v;o.textContent=label;
+    if(v===cur)o.selected=true;sel.appendChild(o);});
+  sel.onchange=()=>fetch("/api/agent-config",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({engine,[kind]:sel.value})});
+  return sel;
+}
+(async()=>{
+  let cfg={};try{cfg=await(await fetch("/api/agent-config")).json();}catch(e){}
+  ["claude","codex"].forEach(e=>{
+    const bar=document.querySelector(`.cfgbar[data-e="${e}"]`);if(!bar)return;
+    bar.innerHTML="";
+    ["model","mode","effort"].forEach(k=>bar.appendChild(buildSelect(e,k,(cfg[e]||{})[k]||"")));
+    const chip=document.createElement("span");chip.className="usechip";chip.id="use-"+e;bar.appendChild(chip);
+  });
+})();
 
 // ---- 兩側歷史側欄(定時自動同步,沒變不重畫) ----
 const collapsedG={claude:new Set(),codex:new Set()};
@@ -473,6 +505,8 @@ async function refreshTokens(){
         <button class="clearbtn" data-v="${v}" title="清空 ${v} 上下文:下一則用新 session 開始,不再背舊上下文重複 cache(省 token)">清空 cache</button></div>`;
     }).join("");
     document.querySelectorAll(".clearbtn").forEach(b=>b.onclick=()=>clearContext(b.dataset.v));
+    ["claude","codex"].forEach(v=>{const c=document.getElementById("use-"+v);
+      if(c&&d[v])c.textContent=`$${d[v].cost.toFixed(2)} · 快取 ${d[v].cache_pct}%`;});
   }catch(e){}
 }
 async function clearContext(engine){
@@ -488,7 +522,7 @@ async function refreshBehavior(){
     const arr=data.records||[],streak=data.streak||{};
     const el=document.getElementById("bstrip");
     if(!arr.length&&!Object.values(streak).some(v=>v>=3)){
-      el.innerHTML='<span class="bnote">設定專案 + 開可改檔後,每輪比對 AI 嘴上宣稱 vs 磁碟實際變動</span>';return;}
+      el.innerHTML='<span class="bnote">設定專案 + 把 agent 的 mode 設成可寫(Accept edits / Workspace-write),每輪比對 AI 嘴上宣稱 vs 磁碟實際變動</span>';return;}
     let h="";
     // 鬼打牆:當前 streak 真值(連續宣稱卻 0 變動)
     Object.keys(streak).forEach(e=>{
