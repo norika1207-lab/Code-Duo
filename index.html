@@ -45,8 +45,8 @@
   .clearbtn{font-size:10px;padding:4px 9px;border-radius:7px;background:#11141b;
             border:1px solid var(--line);color:var(--dim);cursor:pointer;margin-left:4px}
   .clearbtn:hover{border-color:var(--user);color:#fff}
-  .bstrip{display:flex;gap:8px;flex:1;min-width:0;align-items:center;flex-wrap:wrap;
-          background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 18px}
+  .bstrip{display:flex;gap:8px;flex:1;min-width:0;align-items:center;flex-wrap:wrap}
+  .bnote{color:var(--dim);font-size:12px}
   .bpill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;
          font-size:11px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
   .bpill.ok{color:#4ad07a;border-color:#1f5a36;background:#0f1f16}
@@ -488,7 +488,7 @@ async function refreshBehavior(){
     const arr=data.records||[],streak=data.streak||{};
     const el=document.getElementById("bstrip");
     if(!arr.length&&!Object.values(streak).some(v=>v>=3)){
-      el.innerHTML='<span class="bpill">設定專案 + 開可改檔後,每輪比對 AI 嘴上宣稱 vs 磁碟實際變動</span>';return;}
+      el.innerHTML='<span class="bnote">設定專案 + 開可改檔後,每輪比對 AI 嘴上宣稱 vs 磁碟實際變動</span>';return;}
     let h="";
     // 鬼打牆:當前 streak 真值(連續宣稱卻 0 變動)
     Object.keys(streak).forEach(e=>{
