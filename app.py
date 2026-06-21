@@ -621,6 +621,16 @@ class H(BaseHTTPRequestHandler):
                         STATE[e]["cwd"] = path
                         STATE[e]["id"] = None
             self._send(200, json.dumps({"ok": True, "project": path, "write": write}))
+        elif self.path == "/api/clear-context":
+            # 清空 cache=重置該 agent 的 session,下一則用新 session 開始,
+            # 不再背著累積的上下文重複 cache(等同對 Claude Code 送 /clear)
+            eng = req.get("engine")
+            engines = ["claude", "codex"] if eng in (None, "both") else [eng]
+            with LOCK:
+                for e in engines:
+                    if e in STATE:
+                        STATE[e]["id"] = None
+            self._send(200, json.dumps({"ok": True, "cleared": engines}))
         elif self.path == "/api/reset":
             with LOCK:
                 for e in STATE:

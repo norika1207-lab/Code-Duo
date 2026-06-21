@@ -36,6 +36,9 @@
   .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
   .tcard .kpi b{font-size:15px;font-weight:700}
   .tcard .kpi span{font-size:9px;color:var(--dim);letter-spacing:.3px}
+  .clearbtn{font-size:10px;padding:4px 9px;border-radius:7px;background:#11141b;
+            border:1px solid var(--line);color:var(--dim);cursor:pointer;margin-left:4px}
+  .clearbtn:hover{border-color:var(--user);color:#fff}
   .bstrip{display:flex;gap:8px;flex:1;align-items:center;flex-wrap:wrap}
   .bpill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;
          font-size:11px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
@@ -432,9 +435,18 @@ async function refreshTokens(){
         <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>成本</span></div>
         <div class="kpi"><b>${fmtTok(a.total_tokens)}</b><span>tokens</span></div>
         <div class="kpi"><b>${a.cache_pct}%</b><span>快取命中</span></div>
-        <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div></div>`;
+        <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div>
+        <button class="clearbtn" data-v="${v}" title="清空 ${v} 上下文:下一則用新 session 開始,不再背舊上下文重複 cache(省 token)">清空 cache</button></div>`;
     }).join("");
+    document.querySelectorAll(".clearbtn").forEach(b=>b.onclick=()=>clearContext(b.dataset.v));
   }catch(e){}
+}
+async function clearContext(engine){
+  if(!confirm(`清空 ${engine} 的對話上下文?\n下一則訊息會用全新 session 開始,不再背著舊的快取上下文(省 token)。\n歷史 session 不會被刪除。`))return;
+  await fetch("/api/clear-context",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({engine})});
+  activeId[engine]=null;
+  add(engine,"sys","",`🧹 已清空 ${engine} 上下文,下一則從新 session 開始`);
 }
 async function refreshBehavior(){
   try{
