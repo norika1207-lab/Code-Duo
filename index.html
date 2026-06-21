@@ -132,6 +132,10 @@
   .msg .act{font-size:11px;padding:3px 8px;background:#11141b;border:1px solid var(--line);
             border-radius:6px;color:var(--dim);cursor:pointer}
   .msg .act:hover{border-color:var(--user);color:#fff}
+  /* live step rows (tool use / commands) while streaming */
+  .step{font-size:11.5px;color:#9aa3b5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        border-left:2px solid var(--line);padding:2px 0 2px 8px;margin:3px 0;
+        white-space:pre-wrap;word-break:break-all}
   .projlabel{font-size:11px;color:var(--dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;
              white-space:nowrap}
   .divider{align-self:center;color:var(--dim);font-size:11px;border-top:1px dashed var(--line);
@@ -319,49 +323,65 @@ function md(raw){
   closeL();return html;
 }
 
-// bot reply + hand-off / review actions (pass this message to the other agent)
-function renderBot(engine,res,label){
+// live streaming: show the agent's steps (narration, tool use, answer) as they happen
+function newLive(engine){
+  const box=document.createElement("div");box.className="msg bot";
+  box.innerHTML=`<div class="who">${engine} · …</div><div class="body"></div>`;
+  logs[engine].appendChild(box);
+  return {box,body:box.querySelector(".body"),segs:[]};
+}
+function renderLive(L){
+  L.body.innerHTML=L.segs.map(s=>s.type==="tool"?`<div class="step">${escapeHtml(s.t)}</div>`:md(s.t)).join("");
+}
+function finalizeLive(engine,L,ms){
+  const finalText=L.segs.filter(s=>s.type==="text").map(s=>s.t).join("\n");
+  L.box.querySelector(".who").textContent=engine+" · "+(ms/1000).toFixed(1)+"s";
   const other=engine==="claude"?"codex":"claude";
   const oName=other.charAt(0).toUpperCase()+other.slice(1);
-  const txt=(res&&res.text)||"[empty]";
-  const d=document.createElement("div");d.className="msg bot";
-  if(res&&!res.ok)d.style.borderColor="#a33";
-  d.innerHTML=`<div class="who">${escapeHtml(label)}</div>${md(txt)}`
-    +`<div class="acts"><button class="act" data-a="handoff">→ Hand to ${oName}</button>`
-    +`<button class="act" data-a="audit">→ ${oName} review</button></div>`;
-  d.querySelector('[data-a="handoff"]').onclick=()=>crossFeed(other,"handoff",txt);
-  d.querySelector('[data-a="audit"]').onclick=()=>crossFeed(other,"audit",txt);
-  logs[engine].appendChild(d);logs[engine].scrollTop=logs[engine].scrollHeight;return d;
+  const acts=document.createElement("div");acts.className="acts";
+  acts.innerHTML=`<button class="act" data-a="h">→ Hand to ${oName}</button><button class="act" data-a="a">→ ${oName} review</button>`;
+  acts.querySelector('[data-a="h"]').onclick=()=>crossFeed(other,"handoff",finalText);
+  acts.querySelector('[data-a="a"]').onclick=()=>crossFeed(other,"audit",finalText);
+  L.box.appendChild(acts);
 }
-
-// send some text to one engine, render the result in its column
-async function runOne(engine,text,sysNote){
-  if(sysNote)add(engine,"sys","",sysNote);
-  tags[engine].textContent="thinking…";
-  const think=add(engine,"bot think","","▍ thinking…");
+async function streamRun(target,text,sysNote){
+  const cols=target==="both"?["claude","codex"]:[target];
+  cols.forEach(c=>{ if(sysNote)add(c,"sys","",sysNote); else add(c,"user","You",text); });
+  const live={};
+  cols.forEach(c=>{tags[c].textContent="working…";live[c]=newLive(c);});
   try{
-    const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:engine,text})});
-    const data=await r.json();
-    think.remove();tags[engine].textContent="idle";
-    const res=data[engine];
-    if(!res){add(engine,"bot","System","[no response] "+(data.error||""));return;}
-    renderBot(engine,res,engine+" · "+(res.ms/1000).toFixed(1)+"s");
-  }catch(e){think.remove();tags[engine].textContent="idle";add(engine,"bot","System","[request failed] "+e);}
+    const r=await fetch("/api/stream",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target,text})});
+    const reader=r.body.getReader(),dec=new TextDecoder();let buf="";
+    while(true){
+      const {value,done}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      let nl;while((nl=buf.indexOf("\n"))>=0){
+        const line=buf.slice(0,nl).trim();buf=buf.slice(nl+1);
+        if(!line)continue;
+        let ev;try{ev=JSON.parse(line);}catch(e){continue;}
+        const e=ev.engine,L=live[e];if(!L)continue;
+        if(ev.k==="text"){L.segs.push({type:"text",t:ev.t});renderLive(L);logs[e].scrollTop=logs[e].scrollHeight;}
+        else if(ev.k==="tool"){L.segs.push({type:"tool",t:ev.t});renderLive(L);logs[e].scrollTop=logs[e].scrollHeight;}
+        else if(ev.k==="done"){tags[e].textContent="idle";finalizeLive(e,L,ev.ms||0);}
+      }
+    }
+    cols.forEach(c=>{if(tags[c].textContent==="working…")tags[c].textContent="idle";});
+  }catch(err){cols.forEach(c=>{tags[c].textContent="idle";add(c,"sys","","[stream failed] "+err);});}
 }
 
-// cross-feed: build a hand-off or review prompt from the other side's output
+// cross-feed: build a hand-off or review prompt from the other side's output, then stream it
 function crossFeed(target,mode,srcText){
   const src=target==="claude"?"Codex":"Claude";
   let prompt,note;
   if(mode==="handoff"){
     note=`↩ Taking over ${src}'s last message`;
-    prompt=`Below is ${src}'s work on the current task. Take over: first understand what it did, judge whether there are issues, then continue and get it right. The project is your working directory; read the files to verify.\n\n--- ${src}'s output ---\n${srcText}`;
+    prompt=`Below is ${src}'s work on the current task. Take over: understand what it did, judge whether there are issues, then continue and get it right. The project is your working directory; read the files to verify.\n\n--- ${src}'s output ---\n${srcText}`;
   }else{
     note=`🔍 Reviewing ${src}'s last message`;
     prompt=`Review ${src}'s work below: point out errors, risks, omissions or better approaches, then give a clear verdict (correct / wrong / conditional). You can read the project files as evidence.\n\n--- ${src}'s output ---\n${srcText}`;
   }
-  runOne(target,prompt,note);
+  streamRun(target,prompt,note);
 }
 
 async function send(){
@@ -370,21 +390,7 @@ async function send(){
   const m=text.match(/^@(claude|codex|both)\s+/i);
   if(m){t=m[1].toLowerCase();text=text.slice(m[0].length);}
   box.value="";box.style.height="40px";
-  const cols=t==="both"?["claude","codex"]:[t];
-  cols.forEach(c=>add(c,"user","You",text));
-  const thinks={};
-  cols.forEach(c=>{tags[c].textContent="thinking…";thinks[c]=add(c,"bot think","","▍ thinking…");});
-  try{
-    const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:t,text})});
-    const data=await r.json();
-    cols.forEach(c=>{
-      thinks[c].remove();tags[c].textContent="idle";
-      const res=data[c];
-      if(!res){add(c,"bot","System","[no response] "+(data.error||""));return;}
-      renderBot(c,res,c+" · "+(res.ms/1000).toFixed(1)+"s");
-    });
-  }catch(e){cols.forEach(c=>{thinks[c].remove();tags[c].textContent="idle";add(c,"bot","System","[request failed] "+e);});}
+  streamRun(t,text);
 }
 document.getElementById("send").onclick=send;
 box.addEventListener("keydown",e=>{
@@ -486,18 +492,7 @@ async function startNewSession(){
     body:JSON.stringify({engine,cwd})});
   closeNew();
   logs[engine].innerHTML="";activeId[engine]=null;tags[engine].textContent="idle";
-  if(!text)return;
-  add(engine,"user","You",text);
-  tags[engine].textContent="thinking…";
-  const think=add(engine,"bot think","","▍ thinking…");
-  try{
-    const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:engine,text})});
-    const data=await r.json();think.remove();tags[engine].textContent="idle";
-    const res=data[engine];
-    if(res)renderBot(engine,res,engine+" · "+(res.ms/1000).toFixed(1)+"s");
-    else add(engine,"bot","System","[no response] "+(data.error||""));
-  }catch(e){think.remove();tags[engine].textContent="idle";add(engine,"bot","System","[request failed] "+e);}
+  if(text)streamRun(engine,text);
 }
 document.getElementById("newgo").onclick=startNewSession;
 document.getElementById("newmsg").addEventListener("keydown",e=>{

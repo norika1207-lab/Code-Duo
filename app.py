@@ -201,6 +201,139 @@ def ask_codex(text):
             "ms": int((time.time()-t0)*1000), "meta": {"thread": new_tid or tid}}
 
 
+def _fmt_tool(name, inp):
+    inp = inp or {}
+    if name == "Bash":
+        return "⌘ " + str(inp.get("command", ""))[:120]
+    if name in ("Edit", "Write", "NotebookEdit"):
+        return "✎ " + str(inp.get("file_path", ""))
+    if name == "Read":
+        return "📖 " + str(inp.get("file_path", ""))
+    if name in ("Grep", "Glob"):
+        return "🔎 " + str(inp.get("pattern", ""))[:80]
+    return "▸ " + str(name) + " " + json.dumps(inp)[:80]
+
+
+def run_stream_claude(text, emit):
+    if not CLAUDE_BIN:
+        emit({"engine": "claude", "k": "text", "t": "[claude CLI not found]"}); return ""
+    with LOCK:
+        sid, cwd = STATE["claude"]["id"], STATE["claude"]["cwd"]
+        cfg = dict(AGENT_CFG["claude"])
+    cmd = [CLAUDE_BIN, "-p", text, "--output-format", "stream-json", "--verbose"]
+    if sid:
+        cmd += ["--resume", sid]
+    cmd += ["--permission-mode", cfg["mode"] or "default"]
+    if cfg["model"]:
+        cmd += ["--model", cfg["model"]]
+    if cfg["effort"]:
+        cmd += ["--effort", cfg["effort"]]
+    cmd += ["--settings", json.dumps({"fastMode": bool(cfg.get("fast"))})]
+    final, newsid = "", None
+    try:
+        p = subprocess.Popen(cmd, cwd=cwd or HERE, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        for line in p.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            t = d.get("type")
+            if t == "assistant":
+                for b in d.get("message", {}).get("content", []):
+                    if b.get("type") == "text" and b.get("text"):
+                        emit({"engine": "claude", "k": "text", "t": b["text"]})
+                    elif b.get("type") == "tool_use":
+                        emit({"engine": "claude", "k": "tool", "t": _fmt_tool(b.get("name"), b.get("input"))})
+            elif t == "result":
+                final = d.get("result", "") or final
+                newsid = d.get("session_id")
+        p.wait()
+    except Exception as e:
+        emit({"engine": "claude", "k": "text", "t": f"[error] {e}"})
+    if newsid:
+        with LOCK:
+            STATE["claude"]["id"] = newsid
+    return final
+
+
+def run_stream_codex(text, emit):
+    if not CODEX_BIN:
+        emit({"engine": "codex", "k": "text", "t": "[codex CLI not found]"}); return ""
+    with LOCK:
+        tid, cwd = STATE["codex"]["id"], STATE["codex"]["cwd"]
+        cfg = dict(AGENT_CFG["codex"])
+    mode = cfg["mode"] or "read-only"
+    flags = ["--json", "--skip-git-repo-check", "-c", f"sandbox_mode={mode}"]
+    if mode in _WRITABLE:
+        flags += ["-c", "approval_policy=never"]
+    if cfg["model"]:
+        flags += ["-m", cfg["model"]]
+    if cfg["effort"]:
+        flags += ["-c", f"model_reasoning_effort={cfg['effort']}"]
+    cmd = ([CODEX_BIN, "exec", "resume", tid] + flags + [text]) if tid else ([CODEX_BIN, "exec"] + flags + [text])
+    final, newtid = "", None
+    try:
+        p = subprocess.Popen(cmd, cwd=cwd or HERE, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        for line in p.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            if d.get("type") == "thread.started":
+                newtid = d.get("thread_id")
+            if d.get("type") == "item.completed":
+                it = d.get("item", {}) if isinstance(d.get("item"), dict) else {}
+                ty = it.get("type")
+                if ty == "agent_message":
+                    final = it.get("text", "") or final
+                    emit({"engine": "codex", "k": "text", "t": it.get("text", "")})
+                elif ty == "command_execution":
+                    emit({"engine": "codex", "k": "tool", "t": "⌘ " + str(it.get("command", ""))[:120]})
+                elif ty == "file_change":
+                    emit({"engine": "codex", "k": "tool", "t": "✎ " + str(it.get("path") or it.get("changes") or "")[:120]})
+        p.wait()
+    except Exception as e:
+        emit({"engine": "codex", "k": "text", "t": f"[error] {e}"})
+    if newtid:
+        with LOCK:
+            STATE["codex"]["id"] = newtid
+    return final
+
+
+def handle_stream(target, text, emit):
+    with LOCK:
+        proj = SETTINGS["project"]
+        writable = {e: (AGENT_CFG[e]["mode"] in _WRITABLE) for e in AGENT_CFG}
+    before = _snapshot(proj) if proj else {}
+    engines = [e for e in ("claude", "codex") if target in (e, "both")]
+    results = {}
+
+    def work(e):
+        t0 = time.time()
+        fn = run_stream_claude if e == "claude" else run_stream_codex
+        final = fn(text, emit)
+        results[e] = {"text": final, "ms": int((time.time() - t0) * 1000)}
+        emit({"engine": e, "k": "done", "ms": results[e]["ms"]})
+
+    threads = [threading.Thread(target=work, args=(e,)) for e in engines]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    changed = _diff(before, _snapshot(proj)) if proj else []
+    for e in engines:
+        if results.get(e, {}).get("text"):
+            record_behavior(e, results[e]["text"], proj, changed, writable.get(e, False))
+
+
 def handle_send(target, text):
     out, threads = {}, []
     with LOCK:
@@ -837,6 +970,29 @@ class H(BaseHTTPRequestHandler):
                                             "name": os.path.basename(dest)}))
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}))
+            return
+        if self.path == "/api/stream":
+            req = json.loads(body or b"{}")
+            target = req.get("target", "both")
+            text = (req.get("text") or "").strip()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            wlock = threading.Lock()
+
+            def emit(ev):
+                try:
+                    with wlock:
+                        self.wfile.write((json.dumps(ev, ensure_ascii=False) + "\n").encode())
+                        self.wfile.flush()
+                except Exception:
+                    pass
+            try:
+                if text:
+                    handle_stream(target, text, emit)
+            except Exception as e:
+                emit({"k": "error", "t": str(e)})
             return
         req = json.loads(body or b"{}")
         if self.path == "/api/send":
