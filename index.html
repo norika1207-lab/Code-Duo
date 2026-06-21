@@ -11,8 +11,9 @@
     --claude:#d97757; --codex:#10a37f; --user:#5b8def;
   }
   *{box-sizing:border-box}
-  body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--bg);
-       color:var(--txt);font:14px/1.6 -apple-system,"PingFang TC",system-ui,sans-serif}
+  html,body{width:100%;overflow-x:hidden}
+  body{margin:0;height:100vh;width:100vw;overflow:hidden;display:flex;flex-direction:column;
+       background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,"PingFang TC",system-ui,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line)}
   .brand{display:flex;align-items:center;gap:8px}
   .brand .mark{display:block;flex:none}
@@ -31,8 +32,9 @@
           padding:0 14px}
   .pright{width:230px;flex:none}
   .tcards{display:flex;gap:10px;flex:1;min-width:0}
-  .tcard{flex:1;min-width:0;display:flex;align-items:center;gap:14px;background:var(--panel);
-         border:1px solid var(--line);border-radius:12px;padding:7px 16px}
+  .tcard{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:10px;
+         background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 18px}
+  .tcard .clearbtn{margin-left:auto}
   .tcard .vn{font-size:12px;font-weight:700}
   .tcard.claude .vn{color:var(--claude)} .tcard.codex .vn{color:var(--codex)}
   .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
