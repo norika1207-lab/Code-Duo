@@ -80,6 +80,8 @@ PRICING = {
 }
 # 照妖鏡:近期 agent 宣稱 vs 實證 的檢查結果(最新在前)
 BEHAVIOR = []
+# 兜圈子偵測:每個 agent「連續宣稱動作卻 0 變動」的輪數
+STREAK = {"claude": 0, "codex": 0}
 _TOK_CACHE = {"ts": 0, "data": None}
 
 # duo 自己這層的覆寫(rename/pin/archive/delete)，不碰官方 App 資料
@@ -565,6 +567,17 @@ def check_honesty(engine, text, cwd, changed, write):
 
 def record_behavior(engine, text, cwd, changed, write):
     rec = check_honesty(engine, text, cwd, changed, write)
+    # 兜圈子:連續「宣稱動作但 0 變動」累加;真的動到檔或這輪沒宣稱就歸零
+    if write:
+        if rec["actions"] >= 1 and rec["changed"] == 0:
+            STREAK[engine] = STREAK.get(engine, 0) + 1
+        else:
+            STREAK[engine] = 0
+    rec["streak"] = STREAK.get(engine, 0)
+    rec["circling"] = rec["streak"] >= 3
+    if rec["circling"]:
+        rec["verdict"] = "warn"
+        rec["reason"] = f"連續 {rec['streak']} 輪宣稱進度但磁碟 0 變動(鬼打牆)"
     if rec["verdict"] == "none":
         return
     with LOCK:
@@ -620,7 +633,7 @@ class H(BaseHTTPRequestHandler):
                 _TOK_CACHE.update(ts=now, data=d)
                 self._send(200, json.dumps(d))
         elif u.path == "/api/behavior":
-            self._send(200, json.dumps(BEHAVIOR))
+            self._send(200, json.dumps({"records": BEHAVIOR, "streak": STREAK}))
         elif u.path == "/api/engines":
             self._send(200, json.dumps({
                 "claude": {"available": bool(CLAUDE_BIN), "bin": CLAUDE_BIN,
@@ -691,11 +704,12 @@ class H(BaseHTTPRequestHandler):
                 for e in engines:
                     if e in STATE:
                         STATE[e]["id"] = None
+                        STREAK[e] = 0
             self._send(200, json.dumps({"ok": True, "cleared": engines}))
         elif self.path == "/api/reset":
             with LOCK:
                 for e in STATE:
-                    STATE[e]["id"] = None; STATE[e]["cwd"] = HERE
+                    STATE[e]["id"] = None; STATE[e]["cwd"] = HERE; STREAK[e] = 0
             self._send(200, json.dumps({"ok": True}))
         else:
             self._send(404, json.dumps({"error": "not found"}))
