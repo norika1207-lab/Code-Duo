@@ -14,3 +14,4 @@ __pycache__/
 
 # 使用者上傳的檔案
 .duo_uploads/
+duo_claude_groups.json

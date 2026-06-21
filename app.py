@@ -299,6 +299,128 @@ def _codex_meta_cached(path):
     return res
 
 
+# ---- 解 Chrome Local Storage leveldb(snappy + table 格式)讀 Claude 自訂群組 ----
+import struct
+_CG_CACHE = {"mtime": 0, "groups": {}, "assign": {}}
+_CG_PERSIST = os.path.join(HERE, "duo_claude_groups.json")
+
+
+def _uvarint(b, p):
+    r = s = 0
+    while True:
+        c = b[p]; p += 1
+        r |= (c & 0x7f) << s
+        if not (c & 0x80):
+            return r, p
+        s += 7
+
+
+def _snappy(data):
+    p, ln, s = 0, 0, 0
+    while True:
+        c = data[p]; p += 1; ln |= (c & 0x7f) << s
+        if not (c & 0x80):
+            break
+        s += 7
+    out = bytearray()
+    while p < len(data):
+        tag = data[p]; p += 1; t = tag & 3
+        if t == 0:
+            v = tag >> 2
+            if v < 60:
+                l = v + 1
+            else:
+                nb = v - 59
+                l = int.from_bytes(data[p:p + nb], "little") + 1; p += nb
+            out += data[p:p + l]; p += l
+        else:
+            if t == 1:
+                l = ((tag >> 2) & 7) + 4
+                off = ((tag >> 5) << 8) | data[p]; p += 1
+            elif t == 2:
+                l = (tag >> 2) + 1
+                off = int.from_bytes(data[p:p + 2], "little"); p += 2
+            else:
+                l = (tag >> 2) + 1
+                off = int.from_bytes(data[p:p + 4], "little"); p += 4
+            st = len(out) - off
+            for i in range(l):
+                out.append(out[st + i])
+    return bytes(out)
+
+
+def _ldb_blocks(b):
+    blocks = []
+    if len(b) < 48:
+        return blocks
+    foot = b[-48:]
+    p = 0
+    _o, p = _uvarint(foot, p); _s, p = _uvarint(foot, p)   # metaindex handle(略)
+    ioff, p = _uvarint(foot, p); isz, p = _uvarint(foot, p)  # index handle
+
+    def rd(o, s):
+        raw = b[o:o + s]
+        return _snappy(raw) if b[o + s] == 1 else raw
+    idx = rd(ioff, isz)
+    num = struct.unpack("<I", idx[-4:])[0]
+    end = len(idx) - 4 - num * 4
+    p, prev = 0, b""
+    while p < end:
+        sh, p = _uvarint(idx, p); ns, p = _uvarint(idx, p); vl, p = _uvarint(idx, p)
+        key = prev[:sh] + idx[p:p + ns]; p += ns
+        val = idx[p:p + vl]; p += vl; prev = key
+        o, q = _uvarint(val, 0); s, q = _uvarint(val, q)
+        try:
+            blocks.append(rd(o, s))
+        except Exception:
+            pass
+    return blocks
+
+
+def _scan_groups(text, groups, assign):
+    for m in re.finditer(r'"id":"(cg-[a-f0-9-]+)","name":"([^"]{1,80})"', text):
+        groups.setdefault(m.group(1), m.group(2))
+    for m in re.finditer(r'"code:local_([a-f0-9-]+)":"(cg-[a-f0-9-]+)"', text):
+        assign.setdefault(m.group(1), m.group(2))
+
+
+def _claude_groups():
+    ls = os.path.join(HOME, "Library", "Application Support", "Claude", "Local Storage", "leveldb")
+    try:
+        files = sorted(glob.glob(os.path.join(ls, "*")), key=os.path.getmtime, reverse=True)
+    except Exception:
+        files = []
+    newest = os.path.getmtime(files[0]) if files else 0
+    if _CG_CACHE["mtime"] == newest and _CG_CACHE["groups"]:
+        return _CG_CACHE["groups"], _CG_CACHE["assign"]
+    groups, assign = {}, {}
+    for f in files:
+        try:
+            raw = open(f, "rb").read()
+        except Exception:
+            continue
+        _scan_groups(raw.replace(b"\x00", b"").decode("latin-1", "ignore"), groups, assign)  # 明文(.log)
+        if f.endswith(".ldb"):
+            try:
+                for blk in _ldb_blocks(raw):  # 解壓 snappy 區塊
+                    _scan_groups(blk.replace(b"\x00", b"").decode("latin-1", "ignore"), groups, assign)
+            except Exception:
+                pass
+    if groups:  # 成功讀到 -> 持久化,日後壓縮了也有上次的
+        try:
+            json.dump({"groups": groups, "assign": assign}, open(_CG_PERSIST, "w"))
+        except Exception:
+            pass
+    else:  # 讀不到 -> 用上次成功的快取
+        try:
+            d = json.load(open(_CG_PERSIST))
+            groups, assign = d.get("groups", {}), d.get("assign", {})
+        except Exception:
+            pass
+    _CG_CACHE.update(mtime=newest, groups=groups, assign=assign)
+    return groups, assign
+
+
 def _codex_title_map():
     # Codex 官方標題索引：id -> thread_name（檔案時序排列，後者較新，last-wins）
     m = {}
@@ -319,6 +441,7 @@ def list_sessions(engine, limit=300, include_hidden=False):
     if engine == "claude":
         # 優先讀 Claude 桌面 App 的官方索引(乾淨標題)；沒裝桌面版就降級掃 CLI 的 projects jsonl
         if CLAUDE_SESS:
+            groups, assign = _claude_groups()
             for f in glob.glob(os.path.join(CLAUDE_SESS, "**", "local_*.json"), recursive=True):
                 try:
                     d = json.load(open(f))
@@ -328,7 +451,9 @@ def list_sessions(engine, limit=300, include_hidden=False):
                 if not cid:
                     continue
                 cwd = d.get("cwd") or d.get("originCwd") or HERE
-                rows.append({"id": cid, "cwd": cwd, "project": _proj_name(cwd),
+                sid = (d.get("sessionId") or "").replace("local_", "")
+                grp = groups.get(assign.get(sid))  # 自訂群組名(若有)
+                rows.append({"id": cid, "cwd": cwd, "project": grp or _proj_name(cwd),
                              "title": d.get("title", ""), "first": "",
                              "archived": bool(d.get("isArchived")),
                              "ts": int((d.get("lastActivityAt") or d.get("createdAt") or 0) / 1000)})
