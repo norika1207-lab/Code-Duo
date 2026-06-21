@@ -23,6 +23,24 @@
           border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
   button:hover{border-color:#3a3f50}
 
+  /* 頂部兩列面板(Token / 照妖鏡),stitch 卡片風 */
+  .panels{padding:9px 14px;display:flex;flex-direction:column;gap:8px;
+          background:#101218;border-bottom:1px solid var(--line)}
+  .prow{display:flex;align-items:center;gap:12px;min-height:34px}
+  .plabel{font-size:10px;letter-spacing:1.2px;color:var(--dim);width:130px;flex:none;font-weight:700}
+  .tcards{display:flex;gap:10px;flex:1;flex-wrap:wrap}
+  .tcard{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);
+         border-radius:12px;padding:7px 16px}
+  .tcard .vn{font-size:12px;font-weight:700}
+  .tcard.claude .vn{color:var(--claude)} .tcard.codex .vn{color:var(--codex)}
+  .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
+  .tcard .kpi b{font-size:15px;font-weight:700}
+  .tcard .kpi span{font-size:9px;color:var(--dim);letter-spacing:.3px}
+  .bstrip{display:flex;gap:8px;flex:1;align-items:center;flex-wrap:wrap}
+  .bpill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;
+         font-size:11px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .bpill.ok{color:#4ad07a;border-color:#1f5a36;background:#0f1f16}
+  .bpill.warn{color:#ff8a8a;border-color:#7a2a2a;background:#241313}
   .stage{flex:1;display:flex;gap:1px;overflow:hidden}
 
   /* 兩側歷史側欄 */
@@ -121,6 +139,11 @@
       <button id="reset">清空當前對話</button>
     </div>
   </header>
+
+  <div class="panels">
+    <div class="prow"><span class="plabel">TOKEN · 近 24h</span><div class="tcards" id="tcards">載入中…</div></div>
+    <div class="prow"><span class="plabel">照妖鏡 · AI 工作行為</span><div class="bstrip" id="bstrip">—</div></div>
+  </div>
 
   <div class="stage">
     <!-- 最左：Claude 歷史 -->
@@ -397,6 +420,43 @@ document.querySelectorAll(".hidtog").forEach(b=>b.onclick=()=>{
 loadRail("claude",true);loadRail("codex",true);
 // 定時自動同步:每 1 秒抓一次,兩邊幾乎即時一致(沒變不重畫,所以高頻也不閃)
 setInterval(()=>{loadRail("claude");loadRail("codex");},1000);
+
+// ---- 頂部面板:Token 用量 + 照妖鏡 ----
+function fmtTok(n){return n>=1e9?(n/1e9).toFixed(1)+"B":n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(0)+"K":""+n;}
+async function refreshTokens(){
+  try{
+    const d=await(await fetch("/api/tokens")).json();
+    document.getElementById("tcards").innerHTML=["claude","codex"].map(v=>{
+      const a=d[v];
+      return `<div class="tcard ${v}"><span class="vn">${v==="claude"?"Claude":"Codex"}</span>
+        <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>成本</span></div>
+        <div class="kpi"><b>${fmtTok(a.total_tokens)}</b><span>tokens</span></div>
+        <div class="kpi"><b>${a.cache_pct}%</b><span>快取命中</span></div>
+        <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div></div>`;
+    }).join("");
+  }catch(e){}
+}
+async function refreshBehavior(){
+  try{
+    const arr=await(await fetch("/api/behavior")).json();
+    const el=document.getElementById("bstrip");
+    if(!arr.length){el.innerHTML='<span class="bpill">尚無可查的宣稱(agent 提到檔案時才檢查)</span>';return;}
+    const warns=arr.filter(r=>r.verdict==="warn");
+    const okc=arr.filter(r=>r.verdict==="ok").length;
+    let h=`<span class="bpill ok">✓ ${okc} 則有實證</span>`;
+    if(warns.length){
+      h+=`<span class="bpill warn">⚠ ${warns.length} 則宣稱查無實證</span>`;
+      warns.slice(0,3).forEach(r=>{
+        const miss=r.claims.filter(c=>c.status==="missing"||c.status==="empty")
+          .map(c=>c.path+(c.status==="empty"?"(空檔)":"(找不到)")).join("、");
+        h+=`<span class="bpill warn" title="${escapeHtml(miss)}">${r.engine}: ${escapeHtml(miss).slice(0,46)}</span>`;
+      });
+    }
+    el.innerHTML=h;
+  }catch(e){}
+}
+setInterval(refreshTokens,15000);refreshTokens();
+setInterval(refreshBehavior,2000);refreshBehavior();
 </script>
 </body>
 </html>

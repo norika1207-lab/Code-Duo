@@ -10,6 +10,8 @@
 - `@claude` / `@codex` / `@both` 指定對象，`@both` 兩顆並行
 - 跨輪接續記憶（Claude `--resume`、Codex `exec resume`）
 - 兩側歷史側欄：依專案分組、顯示官方對話標題、點一下即接續舊對話
+- 頂部 Token 面板:解析本機 jsonl 算近 24h 成本 / token / 快取命中率(Claude + Codex,參考 mercury-cache-panel)
+- 頂部照妖鏡:檢查 agent 宣稱建立/修改的檔案有沒有實證(找不到/空檔就示警,參考 AI-Lies-Monitor)
 - 每條對話的 ⋮ 選單：重新命名、置頂、封存、移除（duo 本地覆寫，不動官方 App 資料）
 
 ## 需求

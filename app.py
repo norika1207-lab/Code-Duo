@@ -73,6 +73,15 @@ STATE = {"claude": {"id": None, "cwd": HERE}, "codex": {"id": None, "cwd": HERE}
 SETTINGS = {"project": None, "write": False}
 LOCK = threading.Lock()
 
+# 每百萬 token 美金定價(來自 mercury-cache-panel)
+PRICING = {
+    "claude": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "codex":  {"input": 2.50, "output": 10.00, "cache_read": 0.25, "cache_write": 0.0},
+}
+# 照妖鏡:近期 agent 宣稱 vs 實證 的檢查結果(最新在前)
+BEHAVIOR = []
+_TOK_CACHE = {"ts": 0, "data": None}
+
 # duo 自己這層的覆寫(rename/pin/archive/delete)，不碰官方 App 資料
 OV_PATH = os.path.join(HERE, "duo_overrides.json")
 
@@ -185,6 +194,9 @@ def handle_send(target, text):
         th = threading.Thread(target=work); th.start(); threads.append(th)
     for th in threads:
         th.join()
+    for name, res in out.items():
+        if res and res.get("ok"):
+            record_behavior(name, res.get("text", ""))
     return out
 
 
@@ -369,6 +381,136 @@ def read_transcript(engine, sid):
     return msgs[-200:]
 
 
+# ---------- Token 用量面板(解析本機 jsonl,參考 mercury-cache-panel) ----------
+from datetime import datetime
+
+
+def _iso_epoch(s):
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def token_stats(window_sec=86400):
+    cutoff = time.time() - window_sec
+    out = {v: {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+               "cost": 0.0, "sessions": 0} for v in ("claude", "codex")}
+    # Claude:每則 assistant 訊息按自己的時間戳累加(只算近窗內);input 與 cache_read 是分開的
+    for f in glob.glob(os.path.join(CLAUDE_PROJ, "*", "*.jsonl")):
+        try:
+            if os.path.getmtime(f) < cutoff:
+                continue
+        except OSError:
+            continue
+        hit = False
+        try:
+            for ln in open(f):
+                d = json.loads(ln)
+                u = d.get("message", {}).get("usage")
+                if not u:
+                    continue
+                ep = _iso_epoch(d.get("timestamp"))
+                if ep is not None and ep < cutoff:
+                    continue
+                hit = True
+                a = out["claude"]
+                a["input"] += u.get("input_tokens", 0)
+                a["output"] += u.get("output_tokens", 0)
+                a["cache_read"] += u.get("cache_read_input_tokens", 0)
+                a["cache_write"] += u.get("cache_creation_input_tokens", 0)
+        except Exception:
+            pass
+        if hit:
+            out["claude"]["sessions"] += 1
+    # Codex:token_count 是「累計」,取窗內最後一筆減去窗前最後一筆得到近窗增量
+    for dd in CODEX_DIRS:
+        for f in glob.glob(os.path.join(dd, "**", "*.jsonl"), recursive=True):
+            try:
+                if os.path.getmtime(f) < cutoff:
+                    continue
+            except OSError:
+                continue
+            base, latest = None, None
+            try:
+                for ln in open(f):
+                    d = json.loads(ln)
+                    pl = d.get("payload", {}) if isinstance(d.get("payload"), dict) else {}
+                    if pl.get("type") != "token_count":
+                        continue
+                    tu = pl.get("info", {}).get("total_token_usage")
+                    if not tu:
+                        continue
+                    ep = _iso_epoch(d.get("timestamp"))
+                    if ep is not None and ep < cutoff:
+                        base = tu
+                    else:
+                        latest = tu
+            except Exception:
+                pass
+            if latest:
+                b = base or {}
+                a = out["codex"]
+                a["input"] += max(latest.get("input_tokens", 0) - b.get("input_tokens", 0), 0)
+                a["output"] += max(latest.get("output_tokens", 0) - b.get("output_tokens", 0), 0)
+                a["cache_read"] += max(latest.get("cached_input_tokens", 0) - b.get("cached_input_tokens", 0), 0)
+                a["sessions"] += 1
+    for v in ("claude", "codex"):
+        a = out[v]
+        p = PRICING[v]
+        # Claude:input 不含 cache_read;Codex:input 含 cache_read 要扣掉
+        billable_in = a["input"] - a["cache_read"] if v == "codex" else a["input"]
+        billable_in = max(billable_in, 0)
+        a["cost"] = round(billable_in / 1e6 * p["input"] + a["output"] / 1e6 * p["output"]
+                          + a["cache_read"] / 1e6 * p["cache_read"]
+                          + a["cache_write"] / 1e6 * p["cache_write"], 2)
+        denom = billable_in + a["cache_read"] + a["cache_write"]
+        a["cache_pct"] = round(100 * a["cache_read"] / denom, 1) if denom else 0.0
+        a["total_tokens"] = billable_in + a["output"] + a["cache_read"] + a["cache_write"]
+    return out
+
+
+# ---------- 照妖鏡:檢查 agent 宣稱有沒有實證 ----------
+_BACKTICK = re.compile(r"`([^`\n]{1,120}?)`")
+_EXT = re.compile(r"\.[A-Za-z0-9]{1,8}$")
+
+
+def check_honesty(engine, text, cwd):
+    claims, seen = [], set()
+    for tok in _BACKTICK.findall(text or ""):
+        tok = tok.strip()
+        if not tok or " " in tok or tok in seen:
+            continue
+        if not (_EXT.search(tok) or "/" in tok):  # 只看像檔名/路徑的
+            continue
+        seen.add(tok)
+        p = tok if os.path.isabs(tok) else os.path.join(cwd or HERE, tok)
+        st = "missing"
+        try:
+            if os.path.isfile(p):
+                sz = os.path.getsize(p)
+                age = time.time() - os.path.getmtime(p)
+                st = "empty" if sz == 0 else ("verified" if age < 600 else "exists")
+        except Exception:
+            pass
+        claims.append({"path": tok, "status": st})
+        if len(claims) >= 12:
+            break
+    bad = [c for c in claims if c["status"] in ("missing", "empty")]
+    verdict = "warn" if bad else ("ok" if claims else "none")
+    return {"ts": int(time.time()), "engine": engine, "claims": claims,
+            "n": len(claims), "bad": len(bad), "verdict": verdict}
+
+
+def record_behavior(engine, text):
+    rec = check_honesty(engine, text, STATE.get(engine, {}).get("cwd"))
+    if rec["n"] == 0:
+        return
+    with LOCK:
+        BEHAVIOR.insert(0, rec)
+        del BEHAVIOR[30:]
+
+
 # ---------- HTTP ----------
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -408,6 +550,16 @@ class H(BaseHTTPRequestHandler):
             self._send(200, json.dumps({
                 "project": SETTINGS["project"], "write": SETTINGS["write"],
                 "claude_cwd": STATE["claude"]["cwd"], "codex_cwd": STATE["codex"]["cwd"]}))
+        elif u.path == "/api/tokens":
+            now = time.time()
+            if _TOK_CACHE["data"] and now - _TOK_CACHE["ts"] < 10:
+                self._send(200, json.dumps(_TOK_CACHE["data"]))
+            else:
+                d = token_stats()
+                _TOK_CACHE.update(ts=now, data=d)
+                self._send(200, json.dumps(d))
+        elif u.path == "/api/behavior":
+            self._send(200, json.dumps(BEHAVIOR))
         elif u.path == "/api/engines":
             self._send(200, json.dumps({
                 "claude": {"available": bool(CLAUDE_BIN), "bin": CLAUDE_BIN,
