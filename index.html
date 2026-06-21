@@ -32,9 +32,11 @@
           padding:0 14px}
   .pright{width:230px;flex:none}
   .tcards{display:flex;gap:10px;flex:1;min-width:0}
-  .tcard{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:10px;
-         background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 18px}
-  .tcard .clearbtn{margin-left:auto}
+  .tcard{flex:1;min-width:0;display:flex;align-items:center;gap:14px;
+         background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 20px}
+  .tcard .vn{flex:none}
+  .kgroup{flex:1;display:flex;align-items:center;justify-content:space-evenly;gap:10px;min-width:0}
+  .tcard .clearbtn{flex:none}
   .tcard .vn{font-size:12px;font-weight:700}
   .tcard.claude .vn{color:var(--claude)} .tcard.codex .vn{color:var(--codex)}
   .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
@@ -461,10 +463,12 @@ async function refreshTokens(){
     document.getElementById("tcards").innerHTML=["claude","codex"].map(v=>{
       const a=d[v];
       return `<div class="tcard ${v}"><span class="vn">${v==="claude"?"Claude":"Codex"}</span>
-        <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>成本</span></div>
-        <div class="kpi"><b>${fmtTok(a.total_tokens)}</b><span>tokens</span></div>
-        <div class="kpi"><b>${a.cache_pct}%</b><span>快取命中</span></div>
-        <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div>
+        <div class="kgroup">
+          <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>成本</span></div>
+          <div class="kpi"><b>${fmtTok(a.total_tokens)}</b><span>tokens</span></div>
+          <div class="kpi"><b>${a.cache_pct}%</b><span>快取命中</span></div>
+          <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div>
+        </div>
         <button class="clearbtn" data-v="${v}" title="清空 ${v} 上下文:下一則用新 session 開始,不再背舊上下文重複 cache(省 token)">清空 cache</button></div>`;
     }).join("");
     document.querySelectorAll(".clearbtn").forEach(b=>b.onclick=()=>clearContext(b.dataset.v));
