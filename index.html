@@ -45,7 +45,8 @@
   .clearbtn{font-size:10px;padding:4px 9px;border-radius:7px;background:#11141b;
             border:1px solid var(--line);color:var(--dim);cursor:pointer;margin-left:4px}
   .clearbtn:hover{border-color:var(--user);color:#fff}
-  .bstrip{display:flex;gap:8px;flex:1;align-items:center;flex-wrap:wrap}
+  .bstrip{display:flex;gap:8px;flex:1;min-width:0;align-items:center;flex-wrap:wrap;
+          background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 18px}
   .bpill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;
          font-size:11px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
   .bpill.ok{color:#4ad07a;border-color:#1f5a36;background:#0f1f16}
@@ -157,8 +158,8 @@
   </header>
 
   <div class="panels">
-    <div class="prow"><span class="plabel">TOKEN · 近 24h</span><div class="tcards" id="tcards">載入中…</div><div class="pright"></div></div>
     <div class="prow"><span class="plabel">照妖鏡 · AI 工作行為</span><div class="bstrip" id="bstrip">—</div><div class="pright"></div></div>
+    <div class="prow"><span class="plabel">TOKEN · 近 24h</span><div class="tcards" id="tcards">載入中…</div><div class="pright"></div></div>
   </div>
 
   <div class="stage">
