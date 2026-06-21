@@ -11,3 +11,6 @@ __pycache__/
 # 執行期暫存
 /tmp/
 *.log
+
+# 使用者上傳的檔案
+.duo_uploads/

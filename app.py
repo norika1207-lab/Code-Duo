@@ -3,7 +3,7 @@
 # 不用 API：背後驅動 claude / codex 兩個 CLI，走訂閱登入。
 import json, subprocess, threading, time, os, glob, re, shutil, platform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.path.expanduser("~")
@@ -679,7 +679,28 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
-        req = json.loads(self.rfile.read(n) or b"{}")
+        body = self.rfile.read(n) if n else b""
+        if self.path == "/api/upload":
+            if n > 60 * 1024 * 1024:
+                self._send(413, json.dumps({"error": "檔案太大(>60MB)"})); return
+            fname = os.path.basename(unquote(self.headers.get("X-Filename", "file"))) or "file"
+            fname = fname.replace("\x00", "")
+            base = SETTINGS["project"] or HERE
+            updir = os.path.join(base, ".duo_uploads")
+            try:
+                os.makedirs(updir, exist_ok=True)
+                stem, ext = os.path.splitext(fname)
+                dest, i = os.path.join(updir, fname), 1
+                while os.path.exists(dest):
+                    dest = os.path.join(updir, f"{stem}_{i}{ext}"); i += 1
+                with open(dest, "wb") as f:
+                    f.write(body)
+                self._send(200, json.dumps({"ok": True, "rel": os.path.relpath(dest, base),
+                                            "name": os.path.basename(dest)}))
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}))
+            return
+        req = json.loads(body or b"{}")
         if self.path == "/api/send":
             text = (req.get("text") or "").strip()
             if not text:

@@ -157,6 +157,10 @@
   .plus{width:36px;height:40px;flex:none;font-size:18px;line-height:1;color:var(--dim);
         background:var(--panel);border:1px solid var(--line);border-radius:8px;cursor:pointer}
   .plus:hover{border-color:var(--user);color:#fff}
+  .inputwrap.drag textarea{border-color:var(--user);background:#16203a}
+  .inputwrap.drag::after{content:"放開以加入檔案 ⤵";position:absolute;inset:0;display:flex;
+    align-items:center;justify-content:center;color:var(--user);font-size:12px;
+    pointer-events:none;background:rgba(91,141,239,.08);border-radius:10px}
   .popmenu{position:fixed;z-index:60;background:#1c1f28;border:1px solid var(--line);border-radius:10px;
            padding:5px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.55)}
   .popmenu .pmhead{padding:5px 10px;font-size:11px;color:var(--dim);display:flex;align-items:center;gap:6px;
@@ -222,7 +226,8 @@
   </div>
 
   <footer>
-    <button class="plus" id="plusbtn" title="加入專案檔案/資料夾">+</button>
+    <button class="plus" id="plusbtn" title="加入檔案(上傳/拖曳/瀏覽專案)">+</button>
+    <input type="file" id="fileinput" multiple hidden>
     <div class="targets">
       <button data-t="claude">Claude</button>
       <button data-t="codex">Codex</button>
@@ -647,11 +652,42 @@ function chooseAgentThen(cb){
   });
   placePop(m);
 }
+function showPlusMenu(engine){
+  closePop();
+  const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
+  m.innerHTML=`<div class="pmhead"><span class="ic">⚡</span>${engine==="claude"?"Claude":"Codex"} 加入檔案</div>`;
+  const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">📤</span>上傳電腦檔案…';
+  up.onclick=()=>{closePop();pickFiles(engine);};m.appendChild(up);
+  const br=document.createElement("div");br.className="pmi";br.innerHTML='<span class="ic">📁</span>瀏覽專案檔';
+  br.onclick=()=>openFileBrowser(engine,"");m.appendChild(br);
+  placePop(m);
+}
 plusbtn.onclick=()=>{
   if(document.querySelector(".popmenu")){closePop();return;}
-  if(target==="both")chooseAgentThen(e=>openFileBrowser(e,""));
-  else openFileBrowser(target,"");
+  if(target==="both")chooseAgentThen(showPlusMenu);
+  else showPlusMenu(target);
 };
+
+// ---- 選檔上傳 + 拖曳上傳 ----
+const fileinput=document.getElementById("fileinput");
+let pendingEngine="claude";
+function pickFiles(engine){pendingEngine=engine;fileinput.value="";fileinput.click();}
+fileinput.onchange=()=>uploadFiles(pendingEngine,fileinput.files);
+async function uploadFile(engine,file){
+  try{
+    const buf=await file.arrayBuffer();
+    const r=await fetch("/api/upload",{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:buf});
+    const d=await r.json();
+    if(d.ok)insertRef(engine,d.rel); else alert("上傳失敗: "+(d.error||""));
+  }catch(e){alert("上傳失敗: "+e);}
+}
+async function uploadFiles(engine,files){for(const f of files)await uploadFile(engine,f);}
+
+const iw=document.querySelector(".inputwrap");
+["dragenter","dragover"].forEach(ev=>iw.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();iw.classList.add("drag");}));
+["dragleave","dragend"].forEach(ev=>iw.addEventListener(ev,e=>{if(e.target===iw)iw.classList.remove("drag");}));
+iw.addEventListener("drop",e=>{e.preventDefault();e.stopPropagation();iw.classList.remove("drag");
+  if(e.dataTransfer.files.length)uploadFiles(target==="both"?"claude":target,e.dataTransfer.files);});
 </script>
 </body>
 </html>
