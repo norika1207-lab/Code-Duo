@@ -69,6 +69,8 @@ CODEX_DIRS = CFG["codex_dirs"]
 
 # 每個 agent 記住自己「正在接哪個對話」+「該從哪個目錄跑」(resume 綁 cwd)
 STATE = {"claude": {"id": None, "cwd": HERE}, "codex": {"id": None, "cwd": HERE}}
+# 共用協作設定:兩個 agent 一起做的真實專案目錄 + 是否允許改檔
+SETTINGS = {"project": None, "write": False}
 LOCK = threading.Lock()
 
 # duo 自己這層的覆寫(rename/pin/archive/delete)，不碰官方 App 資料
@@ -118,9 +120,12 @@ def ask_claude(text):
                 "ms": 0, "meta": {}}
     with LOCK:
         sid, cwd = STATE["claude"]["id"], STATE["claude"]["cwd"]
+        write = SETTINGS["write"]
     cmd = [CLAUDE_BIN, "-p", text, "--output-format", "json"]
     if sid:
         cmd += ["--resume", sid]
+    if write:
+        cmd += ["--permission-mode", "acceptEdits"]
     rc, out, err = run(cmd, cwd)
     try:
         d = json.loads(out)
@@ -142,7 +147,11 @@ def ask_codex(text):
                 "ms": 0, "meta": {}}
     with LOCK:
         tid, cwd = STATE["codex"]["id"], STATE["codex"]["cwd"]
-    flags = ["--json", "--skip-git-repo-check", "-c", "sandbox_mode=read-only"]
+        write = SETTINGS["write"]
+    mode = "workspace-write" if write else "read-only"
+    flags = ["--json", "--skip-git-repo-check", "-c", f"sandbox_mode={mode}"]
+    if write:
+        flags += ["-c", "approval_policy=never"]
     if tid:
         cmd = [CODEX_BIN, "exec", "resume", tid] + flags + [text]
     else:
@@ -395,6 +404,10 @@ class H(BaseHTTPRequestHandler):
             self._send(200, json.dumps(read_transcript(eng, sid)))
         elif u.path == "/api/state":
             self._send(200, json.dumps(STATE))
+        elif u.path == "/api/project":
+            self._send(200, json.dumps({
+                "project": SETTINGS["project"], "write": SETTINGS["write"],
+                "claude_cwd": STATE["claude"]["cwd"], "codex_cwd": STATE["codex"]["cwd"]}))
         elif u.path == "/api/engines":
             self._send(200, json.dumps({
                 "claude": {"available": bool(CLAUDE_BIN), "bin": CLAUDE_BIN,
@@ -441,6 +454,21 @@ class H(BaseHTTPRequestHandler):
                     ov[eng].pop(sid, None)
                 _save_overrides(ov)
             self._send(200, json.dumps({"ok": True}))
+        elif self.path == "/api/project":
+            path = (req.get("path") or "").strip()
+            write = bool(req.get("write"))
+            if path and not os.path.isdir(os.path.expanduser(path)):
+                self._send(400, json.dumps({"error": f"目錄不存在: {path}"})); return
+            path = os.path.expanduser(path) if path else None
+            with LOCK:
+                changed = path is not None and path != SETTINGS["project"]
+                SETTINGS["project"] = path
+                SETTINGS["write"] = write
+                if changed:  # 只有「換專案」才讓兩個 agent 在新目錄重新開始
+                    for e in STATE:
+                        STATE[e]["cwd"] = path
+                        STATE[e]["id"] = None
+            self._send(200, json.dumps({"ok": True, "project": path, "write": write}))
         elif self.path == "/api/reset":
             with LOCK:
                 for e in STATE:

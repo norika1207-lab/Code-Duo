@@ -76,6 +76,15 @@
   .msg.old{opacity:.7}
   .msg .who{font-size:11px;color:var(--dim);margin-bottom:3px}
   .msg.think{color:var(--dim);font-style:italic}
+  .msg.sys{align-self:center;background:transparent;border:1px dashed var(--line);color:var(--dim);
+           font-size:11px;padding:4px 10px}
+  .msg .acts{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+  .msg .act{font-size:11px;padding:3px 8px;background:#11141b;border:1px solid var(--line);
+            border-radius:6px;color:var(--dim);cursor:pointer}
+  .msg .act:hover{border-color:var(--user);color:#fff}
+  .projlabel{font-size:11px;color:var(--dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;
+             white-space:nowrap}
+  #writetoggle.on{background:#5a1d1d;border-color:#a33;color:#ffd0d0}
   .divider{align-self:center;color:var(--dim);font-size:11px;border-top:1px dashed var(--line);
            width:100%;text-align:center;padding-top:8px}
 
@@ -104,8 +113,13 @@
       </svg>
       <h1>Code&nbsp;Duo</h1>
     </span>
-    <span class="sub">Claude × Codex · 同窗協作 · 兩側點舊對話即接續 · 走訂閱不走 API</span>
-    <div class="right"><button id="reset">清空當前對話</button></div>
+    <span class="sub">Claude × Codex · 同窗協作 · 走訂閱不走 API</span>
+    <div class="right">
+      <span id="projlabel" class="projlabel" title="兩個 agent 共用的專案目錄">專案: 未設定</span>
+      <button id="setproj">設定專案</button>
+      <button id="writetoggle" title="允許 agent 直接改檔(危險)">唯讀</button>
+      <button id="reset">清空當前對話</button>
+    </div>
   </header>
 
   <div class="stage">
@@ -167,6 +181,51 @@ function add(col,cls,who,text){
 }
 function escapeHtml(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
+// bot 回應 + 交棒/審查按鈕(把這一則交給另一個 agent)
+function renderBot(engine,res,label){
+  const other=engine==="claude"?"codex":"claude";
+  const oName=other.charAt(0).toUpperCase()+other.slice(1);
+  const txt=(res&&res.text)||"[空]";
+  const d=document.createElement("div");d.className="msg bot";
+  if(res&&!res.ok)d.style.borderColor="#a33";
+  d.innerHTML=`<div class="who">${escapeHtml(label)}</div>${escapeHtml(txt)}`
+    +`<div class="acts"><button class="act" data-a="handoff">→ ${oName} 接手</button>`
+    +`<button class="act" data-a="audit">→ ${oName} 審這則</button></div>`;
+  d.querySelector('[data-a="handoff"]').onclick=()=>crossFeed(other,"handoff",txt);
+  d.querySelector('[data-a="audit"]').onclick=()=>crossFeed(other,"audit",txt);
+  logs[engine].appendChild(d);logs[engine].scrollTop=logs[engine].scrollHeight;return d;
+}
+
+// 把一段內容當作指令丟給某個 engine,結果渲染在它那欄
+async function runOne(engine,text,sysNote){
+  if(sysNote)add(engine,"sys","",sysNote);
+  tags[engine].textContent="思考中…";
+  const think=add(engine,"bot think","","▍ 思考中…");
+  try{
+    const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:engine,text})});
+    const data=await r.json();
+    think.remove();tags[engine].textContent="idle";
+    const res=data[engine];
+    if(!res){add(engine,"bot","系統","[沒回應] "+(data.error||""));return;}
+    renderBot(engine,res,engine+" · "+(res.ms/1000).toFixed(1)+"s");
+  }catch(e){think.remove();tags[engine].textContent="idle";add(engine,"bot","系統","[請求失敗] "+e);}
+}
+
+// 交叉餵送:把 srcText(另一邊的產出)組成 接手 或 審查 的 prompt
+function crossFeed(target,mode,srcText){
+  const src=target==="claude"?"Codex":"Claude";
+  let prompt,note;
+  if(mode==="handoff"){
+    note=`↩ 接手 ${src} 上一則`;
+    prompt=`以下是 ${src} 對目前任務的處理。請你接手:先讀懂它做了什麼、判斷有沒有問題,再繼續把它做對。專案就在你的工作目錄,可直接讀檔確認。\n\n--- ${src} 的內容 ---\n${srcText}`;
+  }else{
+    note=`🔍 審查 ${src} 上一則`;
+    prompt=`請審查 ${src} 以下的處理:挑出錯誤、風險、遺漏或更好的做法,最後給明確結論(對 / 不對 / 有條件)。可直接讀專案檔案佐證。\n\n--- ${src} 的內容 ---\n${srcText}`;
+  }
+  runOne(target,prompt,note);
+}
+
 async function send(){
   let text=box.value.trim();if(!text)return;
   let t=target;
@@ -185,8 +244,7 @@ async function send(){
       thinks[c].remove();tags[c].textContent="idle";
       const res=data[c];
       if(!res){add(c,"bot","系統","[沒回應] "+(data.error||""));return;}
-      const mm=add(c,"bot",c+" · "+(res.ms/1000).toFixed(1)+"s",res.text||"[空]");
-      if(!res.ok)mm.style.borderColor="#a33";
+      renderBot(c,res,c+" · "+(res.ms/1000).toFixed(1)+"s");
     });
   }catch(e){cols.forEach(c=>{thinks[c].remove();tags[c].textContent="idle";add(c,"bot","系統","[請求失敗] "+e);});}
 }
@@ -200,6 +258,37 @@ document.getElementById("reset").onclick=async()=>{
   await fetch("/api/reset",{method:"POST"});logs.claude.innerHTML="";logs.codex.innerHTML="";
   document.querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
 };
+
+// ---- 共用專案目錄 + 可改檔 ----
+let curProject=null,curWrite=false;
+const projlabel=document.getElementById("projlabel");
+const writeBtn=document.getElementById("writetoggle");
+function renderProj(){
+  projlabel.textContent="專案: "+(curProject?curProject.replace(/^.*\/([^/]+)\/?$/,"$1"):"未設定");
+  projlabel.title=curProject||"兩個 agent 共用的專案目錄";
+  writeBtn.textContent=curWrite?"可改檔":"唯讀";
+  writeBtn.classList.toggle("on",curWrite);
+}
+async function postProj(){
+  const r=await fetch("/api/project",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path:curProject||"",write:curWrite})});
+  const d=await r.json();
+  if(d.error){alert(d.error);return false;}
+  curProject=d.project;curWrite=d.write;renderProj();return true;
+}
+document.getElementById("setproj").onclick=async()=>{
+  const p=prompt("兩個 agent 一起工作的專案目錄(絕對路徑)：",curProject||"/Volumes/ADATA/dev/");
+  if(p===null)return;
+  const old=curProject;curProject=p.trim()||null;
+  if(!await postProj()){curProject=old;}
+  else{logs.claude.innerHTML="";logs.codex.innerHTML="";
+    add("claude","sys","",`已切到專案 ${curProject||"(無)"}`);add("codex","sys","",`已切到專案 ${curProject||"(無)"}`);}
+};
+writeBtn.onclick=async()=>{
+  if(!curWrite&&!confirm("開啟『可改檔』後,兩個 agent 會直接修改專案裡的檔案\n(Codex workspace-write、Claude 自動接受編輯)。\n確定?"))return;
+  curWrite=!curWrite;await postProj();
+};
+(async()=>{try{const d=await(await fetch("/api/project")).json();curProject=d.project;curWrite=d.write;renderProj();}catch(e){}})();
 
 // ---- 兩側歷史側欄(定時自動同步,沒變不重畫) ----
 const collapsedG={claude:new Set(),codex:new Set()};
