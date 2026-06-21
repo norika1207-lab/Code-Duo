@@ -452,16 +452,17 @@ async function refreshBehavior(){
   try{
     const arr=await(await fetch("/api/behavior")).json();
     const el=document.getElementById("bstrip");
-    if(!arr.length){el.innerHTML='<span class="bpill">尚無可查的宣稱(agent 提到檔案時才檢查)</span>';return;}
+    if(!arr.length){el.innerHTML='<span class="bpill">設定專案 + 開可改檔後,每輪比對 AI 嘴上宣稱 vs 磁碟實際變動</span>';return;}
     const warns=arr.filter(r=>r.verdict==="warn");
     const okc=arr.filter(r=>r.verdict==="ok").length;
-    let h=`<span class="bpill ok">✓ ${okc} 則有實證</span>`;
+    let h=`<span class="bpill ok">✓ ${okc} 則言行一致</span>`;
     if(warns.length){
-      h+=`<span class="bpill warn">⚠ ${warns.length} 則宣稱查無實證</span>`;
+      h+=`<span class="bpill warn">⚠ ${warns.length} 則可疑</span>`;
       warns.slice(0,3).forEach(r=>{
-        const miss=r.claims.filter(c=>c.status==="missing"||c.status==="empty")
-          .map(c=>c.path+(c.status==="empty"?"(空檔)":"(找不到)")).join("、");
-        h+=`<span class="bpill warn" title="${escapeHtml(miss)}">${r.engine}: ${escapeHtml(miss).slice(0,46)}</span>`;
+        let detail=r.reason||"";
+        const miss=r.claims.filter(c=>c.status==="missing"||c.status==="empty").map(c=>c.path).join("、");
+        if(miss)detail+="："+miss;
+        h+=`<span class="bpill warn" title="${escapeHtml(r.engine+" · "+detail)}">${r.engine}: ${escapeHtml(detail).slice(0,52)}</span>`;
       });
     }
     el.innerHTML=h;

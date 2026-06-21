@@ -186,6 +186,9 @@ def ask_codex(text):
 
 def handle_send(target, text):
     out, threads = {}, []
+    with LOCK:
+        proj, write = SETTINGS["project"], SETTINGS["write"]
+    before = _snapshot(proj) if proj else {}
     jobs = [j for j in (("claude", ask_claude), ("codex", ask_codex))
             if target in (j[0], "both")]
     for name, fn in jobs:
@@ -194,9 +197,10 @@ def handle_send(target, text):
         th = threading.Thread(target=work); th.start(); threads.append(th)
     for th in threads:
         th.join()
+    changed = _diff(before, _snapshot(proj)) if proj else []
     for name, res in out.items():
         if res and res.get("ok"):
-            record_behavior(name, res.get("text", ""))
+            record_behavior(name, res.get("text", ""), proj, changed, write)
     return out
 
 
@@ -470,18 +474,59 @@ def token_stats(window_sec=86400):
     return out
 
 
-# ---------- 照妖鏡:檢查 agent 宣稱有沒有實證 ----------
+# ---------- 照妖鏡:AI 嘴上說做了一堆,實際磁碟有沒有動 ----------
 _BACKTICK = re.compile(r"`([^`\n]{1,120}?)`")
 _EXT = re.compile(r"\.[A-Za-z0-9]{1,8}$")
+# 「我做了動作」的宣稱語言(中英)
+_CLAIM = re.compile(
+    r"(建立|新增|建好|寫入|寫好|修改|改好|更新|刪除|刪掉|執行|跑了|跑完|測試過|部署|安裝|"
+    r"已完成|完成了|做好了|搞定|加上了|加好|實作|implemented|created|added|wrote|updated|"
+    r"modified|deleted|ran\b|executed|tested|deployed|installed|fixed|done\b|finished|set up)",
+    re.I)
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".next",
+              "dist", "build", ".cache", "target"}
 
 
-def check_honesty(engine, text, cwd):
+def _snapshot(cwd):
+    snap = {}
+    if not cwd or not os.path.isdir(cwd):
+        return snap
+    n = 0
+    for root, dirs, files in os.walk(cwd):
+        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS and not d.startswith(".")]
+        for f in files:
+            p = os.path.join(root, f)
+            try:
+                snap[p] = (os.path.getmtime(p), os.path.getsize(p))
+            except OSError:
+                pass
+            n += 1
+            if n > 30000:
+                return snap
+    return snap
+
+
+def _diff(before, after):
+    return [p for p, v in after.items() if before.get(p) != v]  # 新建或修改
+
+
+def check_honesty(engine, text, cwd, changed, write):
+    text = text or ""
+    actions = len(_CLAIM.findall(text))
+    changed = changed or []
+    changed_names = set()
+    for p in changed:
+        changed_names.add(os.path.basename(p))
+        try:
+            changed_names.add(os.path.relpath(p, cwd))
+        except Exception:
+            pass
     claims, seen = [], set()
-    for tok in _BACKTICK.findall(text or ""):
+    for tok in _BACKTICK.findall(text):
         tok = tok.strip()
         if not tok or " " in tok or tok in seen:
             continue
-        if not (_EXT.search(tok) or "/" in tok):  # 只看像檔名/路徑的
+        if not (_EXT.search(tok) or "/" in tok):
             continue
         seen.add(tok)
         p = tok if os.path.isabs(tok) else os.path.join(cwd or HERE, tok)
@@ -490,21 +535,37 @@ def check_honesty(engine, text, cwd):
             if os.path.isfile(p):
                 sz = os.path.getsize(p)
                 age = time.time() - os.path.getmtime(p)
-                st = "empty" if sz == 0 else ("verified" if age < 600 else "exists")
+                if sz == 0:
+                    st = "empty"
+                elif tok in changed_names or os.path.basename(tok) in changed_names or age < 300:
+                    st = "verified"   # 這一輪真的動過
+                else:
+                    st = "exists"     # 存在但這輪沒動(只是被提到)
         except Exception:
             pass
         claims.append({"path": tok, "status": st})
         if len(claims) >= 12:
             break
     bad = [c for c in claims if c["status"] in ("missing", "empty")]
-    verdict = "warn" if bad else ("ok" if claims else "none")
+    verified = [c for c in claims if c["status"] == "verified"]
+    # 核心打臉:可改檔模式下,嘴上一堆動作但磁碟 0 變動且沒任何宣稱檔被動過 = 裝忙兜圈子
+    bluff = write and actions >= 2 and not changed and not verified
+    if bad:
+        verdict, reason = "warn", "宣稱的檔案查無實證(找不到/空檔)"
+    elif bluff:
+        verdict, reason = "warn", f"嘴上 {actions} 個動作,磁碟 0 檔變動(疑似裝忙)"
+    elif actions or claims or changed:
+        verdict, reason = "ok", f"{len(changed)} 檔實際變動 · {len(verified)} 個宣稱有實證"
+    else:
+        verdict, reason = "none", ""
     return {"ts": int(time.time()), "engine": engine, "claims": claims,
-            "n": len(claims), "bad": len(bad), "verdict": verdict}
+            "actions": actions, "changed": len(changed),
+            "bad": len(bad), "verdict": verdict, "reason": reason}
 
 
-def record_behavior(engine, text):
-    rec = check_honesty(engine, text, STATE.get(engine, {}).get("cwd"))
-    if rec["n"] == 0:
+def record_behavior(engine, text, cwd, changed, write):
+    rec = check_honesty(engine, text, cwd, changed, write)
+    if rec["verdict"] == "none":
         return
     with LOCK:
         BEHAVIOR.insert(0, rec)
