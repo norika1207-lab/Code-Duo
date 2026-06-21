@@ -73,7 +73,7 @@ STATE = {"claude": {"id": None, "cwd": HERE}, "codex": {"id": None, "cwd": HERE}
 SETTINGS = {"project": None}
 # 每個 agent 各自的 model / mode / effort(像 Claude Code 底部那排控制)
 AGENT_CFG = {
-    "claude": {"model": "", "mode": "default", "effort": ""},
+    "claude": {"model": "", "mode": "default", "effort": "", "fast": False},
     "codex": {"model": "", "mode": "read-only", "effort": ""},
 }
 # 哪些 mode 代表「可以改檔」(給照妖鏡判斷是否該比對磁碟變動)
@@ -147,6 +147,7 @@ def ask_claude(text):
         cmd += ["--model", cfg["model"]]
     if cfg["effort"]:
         cmd += ["--effort", cfg["effort"]]
+    cmd += ["--settings", json.dumps({"fastMode": bool(cfg.get("fast"))})]
     rc, out, err = run(cmd, cwd)
     try:
         d = json.loads(out)
@@ -718,6 +719,8 @@ class H(BaseHTTPRequestHandler):
                 for k in ("model", "mode", "effort"):
                     if k in req:
                         AGENT_CFG[eng][k] = req[k] or ("default" if k == "mode" and eng == "claude" else ("read-only" if k == "mode" else ""))
+                if "fast" in req and "fast" in AGENT_CFG[eng]:
+                    AGENT_CFG[eng]["fast"] = bool(req["fast"])
             self._send(200, json.dumps({"ok": True, "cfg": AGENT_CFG[eng]}))
         elif self.path == "/api/clear-context":
             # 清空 cache=重置該 agent 的 session,下一則用新 session 開始,

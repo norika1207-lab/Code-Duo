@@ -22,6 +22,9 @@
   .cfgbar select{background:#1a1d26;color:var(--txt);border:1px solid var(--line);border-radius:6px;
                  padding:3px 6px;font-size:11px;cursor:pointer;max-width:120px}
   .cfgbar select:hover{border-color:#3a3f50}
+  .cfgbar .fastbtn{padding:3px 9px;font-size:11px;border-radius:6px;background:#1a1d26;
+                   border:1px solid var(--line);color:var(--dim);cursor:pointer}
+  .cfgbar .fastbtn.on{background:#3a2d10;border-color:#caa23a;color:#ffd970}
   .cfgbar .usechip{margin-left:auto;font-size:11px;color:var(--dim)}
   .brand{display:flex;align-items:center;gap:8px}
   .brand .mark{display:block;flex:none}
@@ -353,7 +356,7 @@ const CFG_OPTS={
   claude:{
     model:[["","模型·預設"],["opus","Opus 4.8"],["sonnet","Sonnet 4.6"],["haiku","Haiku 4.5"]],
     mode:[["default","Default"],["acceptEdits","Accept edits"],["plan","Plan"],["bypassPermissions","Bypass"]],
-    effort:[["","Effort·預設"],["low","Low"],["medium","Medium"],["high","High"]]
+    effort:[["","Effort·預設"],["low","Low"],["medium","Medium"],["high","High"],["extra","Extra"],["max","Max"],["ultracode","Ultracode"]]
   },
   codex:{
     model:[["","模型·預設"],["gpt-5.5","GPT-5.5"],["gpt-5","GPT-5"],["o3","o3"]],
@@ -376,6 +379,15 @@ function buildSelect(engine,kind,cur){
     const bar=document.querySelector(`.cfgbar[data-e="${e}"]`);if(!bar)return;
     bar.innerHTML="";
     ["model","mode","effort"].forEach(k=>bar.appendChild(buildSelect(e,k,(cfg[e]||{})[k]||"")));
+    if(e==="claude"){
+      const ft=document.createElement("button");ft.className="fastbtn";ft.textContent="⚡Fast";
+      ft.title="Fast mode(僅 Opus):更快輸出";
+      ft.classList.toggle("on",!!(cfg.claude&&cfg.claude.fast));
+      ft.onclick=()=>{const now=!ft.classList.contains("on");ft.classList.toggle("on",now);
+        fetch("/api/agent-config",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({engine:"claude",fast:now})});};
+      bar.appendChild(ft);
+    }
     const chip=document.createElement("span");chip.className="usechip";chip.id="use-"+e;bar.appendChild(chip);
   });
 })();
