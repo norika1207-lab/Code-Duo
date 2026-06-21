@@ -29,6 +29,22 @@ python3 app.py
 
 開瀏覽器到 http://localhost:8765
 
+## 自動偵測與可攜性
+
+啟動時會自動偵測 CLI 與 session 存放位置，跨 macOS / Linux / Windows，每個人裝在哪都能用：
+
+- `claude` / `codex` 執行檔：先找 PATH，再找常見安裝位置（Homebrew、`/usr/local/bin`、`~/.local/bin`、macOS 上的 `Codex.app` bundle）
+- Claude session：讀 `CLAUDE_CONFIG_DIR`（預設 `~/.claude`）的 `projects/`；有裝桌面版就用它的官方索引拿乾淨標題，沒裝就降級用 CLI jsonl 的 `aiTitle`
+- Codex session：讀 `CODEX_HOME`（預設 `~/.codex`）
+
+找不到時用環境變數手動指定：
+
+```bash
+DUO_CLAUDE_BIN=/path/to/claude DUO_CODEX_BIN=/path/to/codex python3 app.py
+```
+
+偵測結果在啟動時會印出來，也可打 `GET /api/engines` 查。
+
 ## 架構
 
 - `app.py` — 純標準庫 HTTP server，把兩個 CLI 當引擎以無頭模式驅動

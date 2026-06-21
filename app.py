@@ -1,17 +1,71 @@
 #!/usr/bin/env python3
 # duo — 同一個介面，同時載入 Claude 與 Codex 兩個 agent，並能接續過去的對話。
 # 不用 API：背後驅動 claude / codex 兩個 CLI，走訂閱登入。
-import json, subprocess, threading, time, os, glob, re
+import json, subprocess, threading, time, os, glob, re, shutil, platform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CODEX_BIN = "/Applications/Codex.app/Contents/Resources/codex"
 HOME = os.path.expanduser("~")
-CLAUDE_PROJ = os.path.join(HOME, ".claude", "projects")
-CLAUDE_SESS = os.path.join(HOME, "Library", "Application Support", "Claude", "claude-code-sessions")
-CODEX_DIRS = [os.path.join(HOME, ".codex", "sessions"),
-              os.path.join(HOME, ".codex", "archived_sessions")]
+SYS = platform.system()
+
+
+# ---------- 自動偵測 CLI 與 session 存放位置(跨平台 + 環境變數可覆寫) ----------
+def _first_dir(paths):
+    for p in paths:
+        if p and os.path.isdir(p):
+            return p
+    return None
+
+
+def _which(name, extra):
+    return shutil.which(name) or next((p for p in extra if p and os.path.exists(p)), None)
+
+
+def discover():
+    # CLI 執行檔
+    claude_bin = os.environ.get("DUO_CLAUDE_BIN") or _which("claude", [
+        "/opt/homebrew/bin/claude", "/usr/local/bin/claude",
+        os.path.join(HOME, ".local/bin/claude"), os.path.join(HOME, ".npm-global/bin/claude"),
+        os.path.join(HOME, ".bun/bin/claude")])
+    codex_bin = os.environ.get("DUO_CODEX_BIN") or _which("codex", [
+        "/Applications/Codex.app/Contents/Resources/codex",
+        "/opt/homebrew/bin/codex", "/usr/local/bin/codex",
+        os.path.join(HOME, ".local/bin/codex")])
+
+    # Claude CLI 設定目錄(可被 CLAUDE_CONFIG_DIR 覆寫) -> projects/
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude")
+    claude_proj = os.path.join(cfg, "projects")
+
+    # Claude 桌面 App 的 session 索引(有乾淨標題；非必須，沒裝桌面版就 None -> 改讀 jsonl)
+    if SYS == "Darwin":
+        sess_cands = [os.path.join(HOME, "Library/Application Support/Claude/claude-code-sessions")]
+    elif SYS == "Windows":
+        sess_cands = [os.path.join(os.environ.get("APPDATA", ""), "Claude", "claude-code-sessions")]
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")
+        sess_cands = [os.path.join(xdg, "Claude", "claude-code-sessions")]
+    claude_sess = _first_dir(sess_cands)
+
+    # Codex 家目錄(可被 CODEX_HOME 覆寫)
+    cx = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
+    codex_dirs = [os.path.join(cx, "sessions"), os.path.join(cx, "archived_sessions")]
+
+    return {
+        "claude_bin": claude_bin, "codex_bin": codex_bin,
+        "claude_proj": claude_proj, "claude_sess": claude_sess,
+        "codex_home": cx, "codex_dirs": codex_dirs,
+        "codex_index": os.path.join(cx, "session_index.jsonl"),
+        "codex_state": os.path.join(cx, ".codex-global-state.json"),
+    }
+
+
+CFG = discover()
+CLAUDE_BIN = CFG["claude_bin"]
+CODEX_BIN = CFG["codex_bin"]
+CLAUDE_PROJ = CFG["claude_proj"]
+CLAUDE_SESS = CFG["claude_sess"]
+CODEX_DIRS = CFG["codex_dirs"]
 
 # 每個 agent 記住自己「正在接哪個對話」+「該從哪個目錄跑」(resume 綁 cwd)
 STATE = {"claude": {"id": None, "cwd": HERE}, "codex": {"id": None, "cwd": HERE}}
@@ -59,9 +113,12 @@ def run(cmd, cwd, timeout=600):
 # ---------- 驅動兩顆引擎 ----------
 def ask_claude(text):
     t0 = time.time()
+    if not CLAUDE_BIN:
+        return {"ok": False, "text": "[找不到 claude CLI] 請先安裝 Claude Code，或設 DUO_CLAUDE_BIN 指定路徑",
+                "ms": 0, "meta": {}}
     with LOCK:
         sid, cwd = STATE["claude"]["id"], STATE["claude"]["cwd"]
-    cmd = ["claude", "-p", text, "--output-format", "json"]
+    cmd = [CLAUDE_BIN, "-p", text, "--output-format", "json"]
     if sid:
         cmd += ["--resume", sid]
     rc, out, err = run(cmd, cwd)
@@ -80,6 +137,9 @@ def ask_claude(text):
 
 def ask_codex(text):
     t0 = time.time()
+    if not CODEX_BIN:
+        return {"ok": False, "text": "[找不到 codex CLI] 請先安裝 Codex，或設 DUO_CODEX_BIN 指定路徑",
+                "ms": 0, "meta": {}}
     with LOCK:
         tid, cwd = STATE["codex"]["id"], STATE["codex"]["cwd"]
     flags = ["--json", "--skip-git-repo-check", "-c", "sandbox_mode=read-only"]
@@ -163,7 +223,7 @@ def _first_user_and_cwd_codex(path):
 
 def _codex_project_labels():
     # Codex 的「cwd 路徑 -> 專案顯示名」對照(跟 Codex App UI 一致)
-    p = os.path.join(HOME, ".codex", ".codex-global-state.json")
+    p = CFG["codex_state"]
     try:
         d = json.load(open(p))
         return d.get("electron-workspace-root-labels", {}) or {}
@@ -183,7 +243,7 @@ def _proj_name(cwd, labels=None):
 def _codex_title_map():
     # Codex 官方標題索引：id -> thread_name（檔案時序排列，後者較新，last-wins）
     m = {}
-    p = os.path.join(HOME, ".codex", "session_index.jsonl")
+    p = CFG["codex_index"]
     try:
         for ln in open(p):
             d = json.loads(ln)
@@ -198,20 +258,30 @@ def _codex_title_map():
 def list_sessions(engine, limit=300, include_hidden=False):
     rows = []
     if engine == "claude":
-        # 讀 Claude 桌面 App 的官方 session 索引(跟 UI 顯示一致的乾淨標題)
-        for f in glob.glob(os.path.join(CLAUDE_SESS, "**", "local_*.json"), recursive=True):
-            try:
-                d = json.load(open(f))
-            except Exception:
-                continue
-            cid = d.get("cliSessionId")
-            if not cid:
-                continue
-            cwd = d.get("cwd") or d.get("originCwd") or HERE
-            rows.append({"id": cid, "cwd": cwd, "project": _proj_name(cwd),
-                         "title": d.get("title", ""), "first": "",
-                         "archived": bool(d.get("isArchived")),
-                         "ts": int((d.get("lastActivityAt") or d.get("createdAt") or 0) / 1000)})
+        # 優先讀 Claude 桌面 App 的官方索引(乾淨標題)；沒裝桌面版就降級掃 CLI 的 projects jsonl
+        if CLAUDE_SESS:
+            for f in glob.glob(os.path.join(CLAUDE_SESS, "**", "local_*.json"), recursive=True):
+                try:
+                    d = json.load(open(f))
+                except Exception:
+                    continue
+                cid = d.get("cliSessionId")
+                if not cid:
+                    continue
+                cwd = d.get("cwd") or d.get("originCwd") or HERE
+                rows.append({"id": cid, "cwd": cwd, "project": _proj_name(cwd),
+                             "title": d.get("title", ""), "first": "",
+                             "archived": bool(d.get("isArchived")),
+                             "ts": int((d.get("lastActivityAt") or d.get("createdAt") or 0) / 1000)})
+        if not rows:
+            # 降級：只用 CLI、沒桌面索引時，直接掃 ~/.claude/projects 的 jsonl(用 aiTitle)
+            for f in glob.glob(os.path.join(CLAUDE_PROJ, "*", "*.jsonl")):
+                sid = os.path.basename(f)[:-6]
+                cwd, title, first = _first_user_and_cwd_claude(f)
+                cwd = cwd or HERE
+                rows.append({"id": sid, "cwd": cwd, "project": _proj_name(cwd),
+                             "title": title, "first": first,
+                             "ts": int(os.path.getmtime(f))})
         rows.sort(key=lambda r: r["ts"], reverse=True)
         return _apply_overrides("claude", rows[:limit], include_hidden)
     else:
@@ -309,6 +379,12 @@ class H(BaseHTTPRequestHandler):
             self._send(200, json.dumps(read_transcript(eng, sid)))
         elif u.path == "/api/state":
             self._send(200, json.dumps(STATE))
+        elif u.path == "/api/engines":
+            self._send(200, json.dumps({
+                "claude": {"available": bool(CLAUDE_BIN), "bin": CLAUDE_BIN,
+                           "title_source": "desktop" if CLAUDE_SESS else "cli-jsonl"},
+                "codex": {"available": bool(CODEX_BIN), "bin": CODEX_BIN},
+            }))
         else:
             self._send(404, "not found", "text/plain")
 
@@ -360,5 +436,13 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("DUO_PORT", "8765"))
-    print(f"duo 跑起來了  ->  http://localhost:{port}")
+    banner = [
+        f"Code Duo 跑起來了  ->  http://localhost:{port}",
+        f"  平台: {SYS}",
+        f"  Claude CLI : {CLAUDE_BIN or '✗ 找不到(設 DUO_CLAUDE_BIN 或裝 Claude Code)'}",
+        f"  Claude 標題: {'桌面 App 索引' if CLAUDE_SESS else 'CLI projects jsonl(aiTitle)'}",
+        f"  Codex CLI  : {CODEX_BIN or '✗ 找不到(設 DUO_CODEX_BIN 或裝 Codex)'}",
+        f"  Codex home : {CFG['codex_home']}",
+    ]
+    print("\n".join(banner), flush=True)
     ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
