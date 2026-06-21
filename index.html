@@ -116,9 +116,13 @@
   .targets{display:flex;gap:6px}
   .targets button{height:40px}
   .targets button.on{border-color:var(--user);color:#fff;background:#1d2740}
-  .inputwrap{flex:1;position:relative;display:flex}
+  .inputwrap{flex:1;position:relative;display:flex;align-items:stretch}
+  .tgtprefix{display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;flex:none;
+             border:1px solid var(--line);border-right:none;border-radius:10px 0 0 10px;
+             background:#11141b;cursor:pointer;white-space:nowrap;user-select:none}
+  .tgtprefix.claude{color:var(--claude)} .tgtprefix.codex{color:var(--codex)} .tgtprefix.both{color:var(--user)}
   textarea{flex:1;resize:none;background:var(--bg);color:var(--txt);border:1px solid var(--line);
-           border-radius:10px;padding:9px 44px 9px 12px;font:14px/1.4 inherit;height:40px;min-height:40px;max-height:160px}
+           border-radius:0 10px 10px 0;padding:9px 44px 9px 12px;font:14px/1.4 inherit;height:40px;min-height:40px;max-height:160px}
   .sendico{position:absolute;right:6px;bottom:6px;width:28px;height:28px;padding:0;border-radius:7px;
            display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;
            background:var(--user);border-color:var(--user);color:#fff}
@@ -177,15 +181,16 @@
     </div>
   </div>
 
-  <div class="hint">左右兩側點一個舊 session 就接續它續聊。輸入框打 <b>@claude</b> / <b>@codex</b> / <b>@both</b> 指定對象；Enter 送出，Shift+Enter 換行。</div>
+  <div class="hint">左右兩側點一個舊 session 就接續它續聊。按 <b>Tab</b> 切換對象(Claude → Codex → Both，左下按鈕跟著亮)；Enter 送出，Shift+Enter 換行。</div>
   <footer>
     <div class="targets">
-      <button data-t="claude">@claude</button>
-      <button data-t="codex">@codex</button>
-      <button data-t="both" class="on">@both</button>
+      <button data-t="claude">Claude</button>
+      <button data-t="codex">Codex</button>
+      <button data-t="both" class="on">Both</button>
     </div>
     <div class="inputwrap">
-      <textarea id="box" placeholder="跟兩個工程師說話…"></textarea>
+      <span class="tgtprefix both" id="tgtprefix" title="按 Tab 切換對象">Both：</span>
+      <textarea id="box" placeholder="按 Tab 切換 Claude / Codex / Both…"></textarea>
       <button class="sendico" id="send" title="送出 (Enter)">↵</button>
     </div>
   </footer>
@@ -197,11 +202,18 @@ const logs={claude:document.getElementById("log-claude"),codex:document.getEleme
 const tags={claude:document.getElementById("t-claude"),codex:document.getElementById("t-codex")};
 const rails={claude:document.getElementById("rail-claude"),codex:document.getElementById("rail-codex")};
 
-document.querySelectorAll(".targets button").forEach(b=>{
-  b.onclick=()=>{target=b.dataset.t;
-    document.querySelectorAll(".targets button").forEach(x=>x.classList.remove("on"));
-    b.classList.add("on");};
-});
+const TGT_ORDER=["claude","codex","both"];
+const TGT_NAME={claude:"Claude",codex:"Codex",both:"Both"};
+function setTarget(t){
+  target=t;
+  document.querySelectorAll(".targets button").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
+  const pre=document.getElementById("tgtprefix");
+  pre.textContent=TGT_NAME[t]+"：";
+  pre.className="tgtprefix "+t;
+}
+document.querySelectorAll(".targets button").forEach(b=>b.onclick=()=>setTarget(b.dataset.t));
+document.getElementById("tgtprefix").onclick=()=>setTarget(TGT_ORDER[(TGT_ORDER.indexOf(target)+1)%3]);
+setTarget("both");
 
 function add(col,cls,who,text){
   const d=document.createElement("div");d.className="msg "+cls;
@@ -279,6 +291,7 @@ async function send(){
 }
 document.getElementById("send").onclick=send;
 box.addEventListener("keydown",e=>{
+  if(e.key==="Tab"){e.preventDefault();setTarget(TGT_ORDER[(TGT_ORDER.indexOf(target)+1)%3]);return;}
   if(e.isComposing||e.keyCode===229) return;          // 中文選字中,Enter 只確認字不送出
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}
 });
