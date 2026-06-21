@@ -1,4 +1,4 @@
-# 個人 session 覆寫(含本機對話 id)，不上傳
+# personal session overrides (local conversation ids) — not committed
 duo_overrides.json
 
 # Python
@@ -8,10 +8,10 @@ __pycache__/
 # macOS
 .DS_Store
 
-# 執行期暫存
+# runtime temp
 /tmp/
 *.log
 
-# 使用者上傳的檔案
+# user-uploaded files
 .duo_uploads/
 duo_claude_groups.json

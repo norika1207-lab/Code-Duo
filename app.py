@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# duo — 同一個介面，同時載入 Claude 與 Codex 兩個 agent，並能接續過去的對話。
-# 不用 API：背後驅動 claude / codex 兩個 CLI，走訂閱登入。
+# Code Duo — one window driving Claude and Codex; resume past sessions, hand off, audit.
+# No API: drives the claude / codex CLIs, authenticated with your subscriptions.
 import json, subprocess, threading, time, os, glob, re, shutil, platform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
@@ -10,7 +10,7 @@ HOME = os.path.expanduser("~")
 SYS = platform.system()
 
 
-# ---------- 自動偵測 CLI 與 session 存放位置(跨平台 + 環境變數可覆寫) ----------
+# ---------- auto-detect CLIs and session locations (cross-platform, env-overridable) ----------
 def _first_dir(paths):
     for p in paths:
         if p and os.path.isdir(p):
@@ -23,7 +23,7 @@ def _which(name, extra):
 
 
 def discover():
-    # CLI 執行檔
+    # CLI binaries
     claude_bin = os.environ.get("DUO_CLAUDE_BIN") or _which("claude", [
         "/opt/homebrew/bin/claude", "/usr/local/bin/claude",
         os.path.join(HOME, ".local/bin/claude"), os.path.join(HOME, ".npm-global/bin/claude"),
@@ -33,11 +33,11 @@ def discover():
         "/opt/homebrew/bin/codex", "/usr/local/bin/codex",
         os.path.join(HOME, ".local/bin/codex")])
 
-    # Claude CLI 設定目錄(可被 CLAUDE_CONFIG_DIR 覆寫) -> projects/
+    # Claude CLI config dir (override with CLAUDE_CONFIG_DIR) -> projects/
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude")
     claude_proj = os.path.join(cfg, "projects")
 
-    # Claude 桌面 App 的 session 索引(有乾淨標題；非必須，沒裝桌面版就 None -> 改讀 jsonl)
+    # Claude desktop app session index (clean titles; optional, None if not installed -> fall back to jsonl)
     if SYS == "Darwin":
         sess_cands = [os.path.join(HOME, "Library/Application Support/Claude/claude-code-sessions")]
     elif SYS == "Windows":
@@ -47,7 +47,7 @@ def discover():
         sess_cands = [os.path.join(xdg, "Claude", "claude-code-sessions")]
     claude_sess = _first_dir(sess_cands)
 
-    # Codex 家目錄(可被 CODEX_HOME 覆寫)
+    # Codex home (override with CODEX_HOME)
     cx = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
     codex_dirs = [os.path.join(cx, "sessions"), os.path.join(cx, "archived_sessions")]
 
@@ -67,31 +67,31 @@ CLAUDE_PROJ = CFG["claude_proj"]
 CLAUDE_SESS = CFG["claude_sess"]
 CODEX_DIRS = CFG["codex_dirs"]
 
-# 每個 agent 記住自己「正在接哪個對話」+「該從哪個目錄跑」(resume 綁 cwd)
+# each agent remembers which session it's resuming + which dir to run in (resume is cwd-bound)
 STATE = {"claude": {"id": None, "cwd": HERE}, "codex": {"id": None, "cwd": HERE}}
-# 共用協作設定:兩個 agent 一起做的真實專案目錄
+# shared setting: the real project directory both agents work in
 SETTINGS = {"project": None}
-# 每個 agent 各自的 model / mode / effort(像 Claude Code 底部那排控制)
+# per-agent model / mode / effort (like the controls at the bottom of Claude Code)
 AGENT_CFG = {
     "claude": {"model": "", "mode": "default", "effort": "", "fast": False},
     "codex": {"model": "", "mode": "read-only", "effort": ""},
 }
-# 哪些 mode 代表「可以改檔」(給照妖鏡判斷是否該比對磁碟變動)
+# which modes can write files (used by the watchdog to decide whether to diff the disk)
 _WRITABLE = {"acceptEdits", "bypassPermissions", "auto", "dontAsk", "workspace-write", "danger-full-access"}
 LOCK = threading.Lock()
 
-# 每百萬 token 美金定價(來自 mercury-cache-panel)
+# USD price per million tokens (from mercury-cache-panel)
 PRICING = {
     "claude": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
     "codex":  {"input": 2.50, "output": 10.00, "cache_read": 0.25, "cache_write": 0.0},
 }
-# 照妖鏡:近期 agent 宣稱 vs 實證 的檢查結果(最新在前)
+# watchdog: recent claim-vs-evidence checks (newest first)
 BEHAVIOR = []
-# 兜圈子偵測:每個 agent「連續宣稱動作卻 0 變動」的輪數
+# loop detection: per-agent count of consecutive 'claimed actions but 0 disk change' turns
 STREAK = {"claude": 0, "codex": 0}
 _TOK_CACHE = {"ts": 0, "data": None}
 
-# duo 自己這層的覆寫(rename/pin/archive/delete)，不碰官方 App 資料
+# Code Duo's own overrides (rename/pin/archive/delete); never touches the official apps' data
 OV_PATH = os.path.join(HERE, "duo_overrides.json")
 
 
@@ -130,7 +130,7 @@ def run(cmd, cwd, timeout=600):
     return p.returncode, p.stdout, p.stderr
 
 
-# ---------- 驅動兩顆引擎 ----------
+# ---------- drive the two engines ----------
 def ask_claude(text):
     t0 = time.time()
     if not CLAUDE_BIN:
@@ -355,7 +355,7 @@ def handle_send(target, text):
     return out
 
 
-# ---------- 列出 / 讀取過去的 session ----------
+# ---------- list / read past sessions ----------
 def _first_user_and_cwd_claude(path):
     cwd, first, title = None, "", ""
     try:
@@ -398,7 +398,7 @@ def _first_user_and_cwd_codex(path):
 
 
 def _codex_project_labels():
-    # Codex 的「cwd 路徑 -> 專案顯示名」對照(跟 Codex App UI 一致)
+    # Codex 'cwd path -> project display name' map (matches the Codex app UI)
     p = CFG["codex_state"]
     try:
         d = json.load(open(p))
@@ -411,12 +411,12 @@ def _proj_name(cwd, labels=None):
     if labels and cwd in labels:
         return labels[cwd]
     if cwd == HOME:
-        return "ungrouped（家目錄）"
+        return "ungrouped (home)"
     base = os.path.basename((cwd or "").rstrip("/"))
-    return base or cwd or "(未知)"
+    return base or cwd or "(unknown)"
 
 
-_CX_PARSE_CACHE = {}  # path -> (mtime, (cwd, first))，避免高頻輪詢時重複讀沒變動的檔
+_CX_PARSE_CACHE = {}  # path -> (mtime, (cwd, first)); avoid re-reading unchanged files on frequent polls
 
 
 def _codex_meta_cached(path):
@@ -432,7 +432,7 @@ def _codex_meta_cached(path):
     return res
 
 
-# ---- 解 Chrome Local Storage leveldb(snappy + table 格式)讀 Claude 自訂群組 ----
+# ---- decode Chrome Local Storage leveldb (snappy + table format) to read Claude custom groups ----
 import struct
 _CG_CACHE = {"mtime": 0, "groups": {}, "assign": {}}
 _CG_PERSIST = os.path.join(HERE, "duo_claude_groups.json")
@@ -488,7 +488,7 @@ def _ldb_blocks(b):
         return blocks
     foot = b[-48:]
     p = 0
-    _o, p = _uvarint(foot, p); _s, p = _uvarint(foot, p)   # metaindex handle(略)
+    _o, p = _uvarint(foot, p); _s, p = _uvarint(foot, p)   # metaindex handle (unused)
     ioff, p = _uvarint(foot, p); isz, p = _uvarint(foot, p)  # index handle
 
     def rd(o, s):
@@ -532,19 +532,19 @@ def _claude_groups():
             raw = open(f, "rb").read()
         except Exception:
             continue
-        _scan_groups(raw.replace(b"\x00", b"").decode("latin-1", "ignore"), groups, assign)  # 明文(.log)
+        _scan_groups(raw.replace(b"\x00", b"").decode("latin-1", "ignore"), groups, assign)  # plaintext (.log)
         if f.endswith(".ldb"):
             try:
-                for blk in _ldb_blocks(raw):  # 解壓 snappy 區塊
+                for blk in _ldb_blocks(raw):  # decompress snappy blocks
                     _scan_groups(blk.replace(b"\x00", b"").decode("latin-1", "ignore"), groups, assign)
             except Exception:
                 pass
-    if groups:  # 成功讀到 -> 持久化,日後壓縮了也有上次的
+    if groups:  # read ok -> persist, so we still have the last groups after leveldb compacts
         try:
             json.dump({"groups": groups, "assign": assign}, open(_CG_PERSIST, "w"))
         except Exception:
             pass
-    else:  # 讀不到 -> 用上次成功的快取
+    else:  # can't read -> fall back to last good cache
         try:
             d = json.load(open(_CG_PERSIST))
             groups, assign = d.get("groups", {}), d.get("assign", {})
@@ -555,7 +555,7 @@ def _claude_groups():
 
 
 def _codex_title_map():
-    # Codex 官方標題索引：id -> thread_name（檔案時序排列，後者較新，last-wins）
+    # Codex official title index: id -> thread_name (chronological; later wins, last-wins)
     m = {}
     p = CFG["codex_index"]
     try:
@@ -572,7 +572,7 @@ def _codex_title_map():
 def list_sessions(engine, limit=300, include_hidden=False):
     rows = []
     if engine == "claude":
-        # 優先讀 Claude 桌面 App 的官方索引(乾淨標題)；沒裝桌面版就降級掃 CLI 的 projects jsonl
+        # prefer the Claude desktop app index (clean titles); fall back to scanning CLI projects jsonl
         if CLAUDE_SESS:
             groups, assign = _claude_groups()
             for f in glob.glob(os.path.join(CLAUDE_SESS, "**", "local_*.json"), recursive=True):
@@ -585,13 +585,13 @@ def list_sessions(engine, limit=300, include_hidden=False):
                     continue
                 cwd = d.get("cwd") or d.get("originCwd") or HERE
                 sid = (d.get("sessionId") or "").replace("local_", "")
-                grp = groups.get(assign.get(sid))  # 自訂群組名(若有)
+                grp = groups.get(assign.get(sid))  # custom group name (if any)
                 rows.append({"id": cid, "cwd": cwd, "project": grp or _proj_name(cwd),
                              "title": d.get("title", ""), "first": "",
                              "archived": bool(d.get("isArchived")),
                              "ts": int((d.get("lastActivityAt") or d.get("createdAt") or 0) / 1000)})
         if not rows:
-            # 降級：只用 CLI、沒桌面索引時，直接掃 ~/.claude/projects 的 jsonl(用 aiTitle)
+            # fallback: CLI-only, no desktop index -> scan ~/.claude/projects jsonl (use aiTitle)
             for f in glob.glob(os.path.join(CLAUDE_PROJ, "*", "*.jsonl")):
                 sid = os.path.basename(f)[:-6]
                 cwd, title, first = _first_user_and_cwd_claude(f)
@@ -661,7 +661,7 @@ def read_transcript(engine, sid):
     return msgs[-200:]
 
 
-# ---------- Token 用量面板(解析本機 jsonl,參考 mercury-cache-panel) ----------
+# ---------- token usage panel (parse local jsonl, inspired by mercury-cache-panel) ----------
 from datetime import datetime
 
 
@@ -676,7 +676,7 @@ def token_stats(window_sec=86400):
     cutoff = time.time() - window_sec
     out = {v: {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
                "cost": 0.0, "sessions": 0} for v in ("claude", "codex")}
-    # Claude:每則 assistant 訊息按自己的時間戳累加(只算近窗內);input 與 cache_read 是分開的
+    # Claude: sum each assistant message by its own timestamp (only within the window); input and cache_read are separate
     for f in glob.glob(os.path.join(CLAUDE_PROJ, "*", "*.jsonl")):
         try:
             if os.path.getmtime(f) < cutoff:
@@ -703,7 +703,7 @@ def token_stats(window_sec=86400):
             pass
         if hit:
             out["claude"]["sessions"] += 1
-    # Codex:token_count 是「累計」,取窗內最後一筆減去窗前最後一筆得到近窗增量
+    # Codex: token_count is cumulative; window delta = last-in-window minus last-before-window
     for dd in CODEX_DIRS:
         for f in glob.glob(os.path.join(dd, "**", "*.jsonl"), recursive=True):
             try:
@@ -738,7 +738,7 @@ def token_stats(window_sec=86400):
     for v in ("claude", "codex"):
         a = out[v]
         p = PRICING[v]
-        # Claude:input 不含 cache_read;Codex:input 含 cache_read 要扣掉
+        # Claude: input excludes cache_read; Codex: input includes cache_read, subtract it
         billable_in = a["input"] - a["cache_read"] if v == "codex" else a["input"]
         billable_in = max(billable_in, 0)
         a["cost"] = round(billable_in / 1e6 * p["input"] + a["output"] / 1e6 * p["output"]
@@ -750,10 +750,10 @@ def token_stats(window_sec=86400):
     return out
 
 
-# ---------- 照妖鏡:AI 嘴上說做了一堆,實際磁碟有沒有動 ----------
+# ---------- watchdog: did the AI actually change the disk, or just talk? ----------
 _BACKTICK = re.compile(r"`([^`\n]{1,120}?)`")
 _EXT = re.compile(r"\.[A-Za-z0-9]{1,8}$")
-# 「我做了動作」的宣稱語言(中英)
+# claim verbs ('I did X') in English + Chinese
 _CLAIM = re.compile(
     r"(建立|新增|建好|寫入|寫好|修改|改好|更新|刪除|刪掉|執行|跑了|跑完|測試過|部署|安裝|"
     r"已完成|完成了|做好了|搞定|加上了|加好|實作|implemented|created|added|wrote|updated|"
@@ -783,7 +783,7 @@ def _snapshot(cwd):
 
 
 def _diff(before, after):
-    return [p for p, v in after.items() if before.get(p) != v]  # 新建或修改
+    return [p for p, v in after.items() if before.get(p) != v]  # created or modified
 
 
 def check_honesty(engine, text, cwd, changed, write):
@@ -814,9 +814,9 @@ def check_honesty(engine, text, cwd, changed, write):
                 if sz == 0:
                     st = "empty"
                 elif tok in changed_names or os.path.basename(tok) in changed_names or age < 300:
-                    st = "verified"   # 這一輪真的動過
+                    st = "verified"   # actually changed this turn
                 else:
-                    st = "exists"     # 存在但這輪沒動(只是被提到)
+                    st = "exists"     # exists but not touched this turn (just mentioned)
         except Exception:
             pass
         claims.append({"path": tok, "status": st})
@@ -824,7 +824,7 @@ def check_honesty(engine, text, cwd, changed, write):
             break
     bad = [c for c in claims if c["status"] in ("missing", "empty")]
     verified = [c for c in claims if c["status"] == "verified"]
-    # 核心打臉:可改檔模式下,嘴上一堆動作但磁碟 0 變動且沒任何宣稱檔被動過 = 裝忙兜圈子
+    # the core call-out: in a writable mode, many claimed actions but 0 disk change and no verified file = busywork
     bluff = write and actions >= 2 and not changed and not verified
     if bad:
         verdict, reason = "warn", "claimed files have no evidence (missing/empty)"
@@ -841,7 +841,7 @@ def check_honesty(engine, text, cwd, changed, write):
 
 def record_behavior(engine, text, cwd, changed, write):
     rec = check_honesty(engine, text, cwd, changed, write)
-    # 兜圈子:連續「宣稱動作但 0 變動」累加;真的動到檔或這輪沒宣稱就歸零
+    # looping: accumulate consecutive 'claimed actions but 0 change'; reset on real change or a no-claim turn
     if write:
         if rec["actions"] >= 1 and rec["changed"] == 0:
             STREAK[engine] = STREAK.get(engine, 0) + 1
@@ -901,7 +901,7 @@ class H(BaseHTTPRequestHandler):
         elif u.path == "/api/agent-config":
             self._send(200, json.dumps(AGENT_CFG))
         elif u.path == "/api/projects":
-            # 可掛載的專案清單:共用專案 + 各 session 看過的不同 cwd
+            # attachable projects: the shared project + distinct cwds seen across sessions
             seen, out = set(), []
             if SETTINGS["project"]:
                 out.append({"path": SETTINGS["project"], "label": os.path.basename(SETTINGS["project"]) + " (shared)"})
@@ -917,7 +917,7 @@ class H(BaseHTTPRequestHandler):
             base = SETTINGS["project"] or HERE
             rel = q.get("dir", [""])[0]
             d = os.path.normpath(os.path.join(base, rel))
-            if not d.startswith(os.path.normpath(base)):  # 不准跳出專案目錄
+            if not d.startswith(os.path.normpath(base)):  # don't escape the project directory
                 d, rel = base, ""
             entries = []
             try:
@@ -1037,7 +1037,7 @@ class H(BaseHTTPRequestHandler):
             with LOCK:
                 changed = path is not None and path != SETTINGS["project"]
                 SETTINGS["project"] = path
-                if changed:  # 只有「換專案」才讓兩個 agent 在新目錄重新開始
+                if changed:  # only a project change restarts both agents in the new directory
                     for e in STATE:
                         STATE[e]["cwd"] = path
                         STATE[e]["id"] = None
@@ -1054,8 +1054,8 @@ class H(BaseHTTPRequestHandler):
                     AGENT_CFG[eng]["fast"] = bool(req["fast"])
             self._send(200, json.dumps({"ok": True, "cfg": AGENT_CFG[eng]}))
         elif self.path == "/api/clear-context":
-            # 清空 cache=重置該 agent 的 session,下一則用新 session 開始,
-            # 不再背著累積的上下文重複 cache(等同對 Claude Code 送 /clear)
+            # clear cache = reset this agent's session; the next message starts fresh,
+            # no longer re-caching the accumulated context (equivalent to /clear in Claude Code)
             eng = req.get("engine")
             engines = ["claude", "codex"] if eng in (None, "both") else [eng]
             with LOCK:
