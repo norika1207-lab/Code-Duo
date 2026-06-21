@@ -17,8 +17,15 @@
   header{display:flex;align-items:center;gap:12px;padding:3px 14px;border-bottom:1px solid var(--line)}
   button.mini{padding:3px 9px;font-size:11px;border-radius:6px}
   /* 每欄底部控制條:model / mode / effort / 用量(仿 Claude Code 底部) */
-  .cfgbar{display:flex;align-items:center;gap:7px;padding:3px 12px;border-top:1px solid var(--line);
-          background:#101218;flex:none}
+  .cfgbar{display:flex;align-items:center;gap:7px;padding:4px 12px;border-top:1px solid var(--line);
+          background:#101218;flex:none;flex-wrap:wrap}
+  .cfgbar .tag{font-size:11px;color:var(--dim);flex:none}
+  /* 頂部角落的「新聊天」文字連結(非按鈕):Claude 左上、Codex 右上 */
+  .newlink{width:230px;flex:none;padding:0 14px;font-size:12px;font-weight:600;cursor:pointer;
+           display:flex;align-items:center;gap:5px;white-space:nowrap;user-select:none}
+  .newlink.cl{color:var(--claude);justify-content:flex-start}
+  .newlink.cx{color:var(--codex);justify-content:flex-end}
+  .newlink:hover{filter:brightness(1.35);text-decoration:underline}
   .cfgbar select{background:#1a1d26;color:var(--txt);border:1px solid var(--line);border-radius:6px;
                  padding:3px 6px;font-size:11px;cursor:pointer;max-width:120px}
   .cfgbar select:hover{border-color:#3a3f50}
@@ -193,8 +200,12 @@
   </header>
 
   <div class="panels">
-    <div class="prow"><span class="plabel">照妖鏡 · AI 工作行為</span><div class="bstrip" id="bstrip">—</div><div class="pright"></div></div>
-    <div class="prow"><span class="plabel">TOKEN · 近 24h</span><div class="tcards" id="tcards">載入中…</div><div class="pright"></div></div>
+    <div class="prow">
+      <a class="newlink cl" data-e="claude" title="開新對話(重置 session)">＋ 新聊天</a>
+      <div class="bstrip" id="bstrip">—</div>
+      <a class="newlink cx" data-e="codex" title="開新對話(重置 session)">＋ 新聊天</a>
+    </div>
+    <div class="prow"><span class="plabel"></span><div class="tcards" id="tcards">載入中…</div><div class="pright"></div></div>
   </div>
 
   <div class="stage">
@@ -206,16 +217,18 @@
 
     <!-- 中左：Claude 對話 -->
     <div class="col claude">
-      <h2><span class="dot"></span>Claude<span class="tag" id="t-claude">idle</span></h2>
       <div class="log" id="log-claude"></div>
-      <div class="cfgbar" data-e="claude"></div>
+      <div class="cfgbar" data-e="claude">
+        <span class="tag" id="t-claude">idle</span>
+      </div>
     </div>
 
     <!-- 中右：Codex 對話 -->
     <div class="col codex">
-      <h2><span class="dot"></span>Codex<span class="tag" id="t-codex">idle</span></h2>
       <div class="log" id="log-codex"></div>
-      <div class="cfgbar" data-e="codex"></div>
+      <div class="cfgbar" data-e="codex">
+        <span class="tag" id="t-codex">idle</span>
+      </div>
     </div>
 
     <!-- 最右：Codex 歷史 -->
@@ -422,7 +435,6 @@ function buildSelect(engine,kind,cur){
   let cfg={};try{cfg=await(await fetch("/api/agent-config")).json();}catch(e){}
   ["claude","codex"].forEach(e=>{
     const bar=document.querySelector(`.cfgbar[data-e="${e}"]`);if(!bar)return;
-    bar.innerHTML="";
     ["model","mode","effort"].forEach(k=>bar.appendChild(buildSelect(e,k,(cfg[e]||{})[k]||"")));
     if(e==="claude"){
       const ft=document.createElement("button");ft.className="fastbtn";ft.textContent="⚡Fast";
@@ -436,6 +448,13 @@ function buildSelect(engine,kind,cur){
     const chip=document.createElement("span");chip.className="usechip";chip.id="use-"+e;bar.appendChild(chip);
   });
 })();
+// ＋新聊天:重置該 agent 的 session + 清空該欄畫面
+document.querySelectorAll(".newlink").forEach(b=>b.onclick=async()=>{
+  const e=b.dataset.e;
+  await fetch("/api/clear-context",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({engine:e})});
+  logs[e].innerHTML="";activeId[e]=null;tags[e].textContent="新對話";
+});
 
 // ---- 兩側歷史側欄(定時自動同步,沒變不重畫) ----
 const collapsedG={claude:new Set(),codex:new Set()};
