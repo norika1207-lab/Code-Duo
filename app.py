@@ -240,6 +240,22 @@ def _proj_name(cwd, labels=None):
     return base or cwd or "(未知)"
 
 
+_CX_PARSE_CACHE = {}  # path -> (mtime, (cwd, first))，避免高頻輪詢時重複讀沒變動的檔
+
+
+def _codex_meta_cached(path):
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        return (None, "")
+    hit = _CX_PARSE_CACHE.get(path)
+    if hit and hit[0] == mt:
+        return hit[1]
+    res = _first_user_and_cwd_codex(path)
+    _CX_PARSE_CACHE[path] = (mt, res)
+    return res
+
+
 def _codex_title_map():
     # Codex 官方標題索引：id -> thread_name（檔案時序排列，後者較新，last-wins）
     m = {}
@@ -292,7 +308,7 @@ def list_sessions(engine, limit=300, include_hidden=False):
             files += glob.glob(os.path.join(dd, "**", "*.jsonl"), recursive=True)
         files.sort(key=os.path.getmtime, reverse=True)
         for f in files[:limit]:
-            cwd, first = _first_user_and_cwd_codex(f)
+            cwd, first = _codex_meta_cached(f)
             cwd = cwd or HERE
             m = UUID_RE.search(os.path.basename(f))
             sid = m.group(0) if m else None

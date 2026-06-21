@@ -306,8 +306,8 @@ document.querySelectorAll(".rf").forEach(b=>b.onclick=()=>loadRail(b.dataset.e,t
 document.querySelectorAll(".hidtog").forEach(b=>b.onclick=()=>{
   const e=b.dataset.e;hiddenMode[e]=!hiddenMode[e];b.classList.toggle("on",hiddenMode[e]);railSig[e]=null;loadRail(e,true);});
 loadRail("claude",true);loadRail("codex",true);
-// 定時自動同步:你在 Claude/Codex 那邊新開的對話、改的名字,這邊每 8 秒自動跟上
-setInterval(()=>{loadRail("claude");loadRail("codex");},8000);
+// 定時自動同步:每 1 秒抓一次,兩邊幾乎即時一致(沒變不重畫,所以高頻也不閃)
+setInterval(()=>{loadRail("claude");loadRail("codex");},1000);
 </script>
 </body>
 </html>
