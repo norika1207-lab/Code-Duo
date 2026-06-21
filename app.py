@@ -642,6 +642,22 @@ class H(BaseHTTPRequestHandler):
                 "claude_cwd": STATE["claude"]["cwd"], "codex_cwd": STATE["codex"]["cwd"]}))
         elif u.path == "/api/agent-config":
             self._send(200, json.dumps(AGENT_CFG))
+        elif u.path == "/api/files":
+            base = SETTINGS["project"] or HERE
+            rel = q.get("dir", [""])[0]
+            d = os.path.normpath(os.path.join(base, rel))
+            if not d.startswith(os.path.normpath(base)):  # 不准跳出專案目錄
+                d, rel = base, ""
+            entries = []
+            try:
+                for name in sorted(os.listdir(d), key=lambda x: (not os.path.isdir(os.path.join(d, x)), x.lower())):
+                    if name.startswith("."):
+                        continue
+                    entries.append({"name": name, "dir": os.path.isdir(os.path.join(d, name))})
+            except Exception:
+                pass
+            self._send(200, json.dumps({"base": base, "rel": os.path.relpath(d, base) if d != base else "",
+                                        "entries": entries[:400]}))
         elif u.path == "/api/tokens":
             now = time.time()
             if _TOK_CACHE["data"] and now - _TOK_CACHE["ts"] < 10:

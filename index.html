@@ -154,6 +154,18 @@
            display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;
            background:var(--user);border-color:var(--user);color:#fff}
   .sendico:hover{filter:brightness(1.1)}
+  .plus{width:36px;height:40px;flex:none;font-size:18px;line-height:1;color:var(--dim);
+        background:var(--panel);border:1px solid var(--line);border-radius:8px;cursor:pointer}
+  .plus:hover{border-color:var(--user);color:#fff}
+  .popmenu{position:fixed;z-index:60;background:#1c1f28;border:1px solid var(--line);border-radius:10px;
+           padding:5px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.55)}
+  .popmenu .pmhead{padding:5px 10px;font-size:11px;color:var(--dim);display:flex;align-items:center;gap:6px;
+                   border-bottom:1px solid var(--line);margin-bottom:4px}
+  .popmenu .pmi{padding:7px 10px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:9px;
+                overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .popmenu .pmi:hover{background:#2a3142}
+  .popmenu .ic{color:var(--dim);flex:none;width:15px;text-align:center}
+  .popmenu .pmi.cl .ic{color:var(--claude)} .popmenu .pmi.cx .ic{color:var(--codex)}
   .hint{color:var(--dim);font-size:11px;padding:0 14px 8px}
 </style>
 </head>
@@ -210,6 +222,7 @@
   </div>
 
   <footer>
+    <button class="plus" id="plusbtn" title="加入專案檔案/資料夾">+</button>
     <div class="targets">
       <button data-t="claude">Claude</button>
       <button data-t="codex">Codex</button>
@@ -386,9 +399,9 @@ const CFG_OPTS={
     effort:[["","Effort·預設"],["low","Low"],["medium","Medium"],["high","High"],["extra","Extra"],["max","Max"],["ultracode","Ultracode"]]
   },
   codex:{
-    model:[["","模型·預設"],["gpt-5.5","GPT-5.5"],["gpt-5","GPT-5"],["o3","o3"]],
-    mode:[["read-only","Read-only"],["workspace-write","Workspace-write"]],
-    effort:[["","Effort·預設"],["low","Low"],["medium","Medium"],["high","High"],["xhigh","xHigh"]]
+    model:[["","模型·預設"],["gpt-5.5","GPT-5.5"],["gpt-5.4","GPT-5.4"],["gpt-5.4-mini","GPT-5.4-Mini"],["gpt-5.3-codex-spark","GPT-5.3-Codex-Spark"]],
+    mode:[["read-only","要求核准·唯讀"],["workspace-write","代我核准·可改檔"],["danger-full-access","完整存取權"]],
+    effort:[["","推理·預設"],["low","低"],["medium","中"],["high","高"],["xhigh","超高"]]
   }
 };
 function buildSelect(engine,kind,cur){
@@ -584,6 +597,61 @@ async function refreshBehavior(){
 }
 setInterval(refreshTokens,15000);refreshTokens();
 setInterval(refreshBehavior,2000);refreshBehavior();
+
+// ---- 輸入列左邊的「+」:依 Tab 對應 agent、加入專案檔案/資料夾 ----
+const plusbtn=document.getElementById("plusbtn");
+function closePop(){document.querySelectorAll(".popmenu").forEach(x=>x.remove());
+  document.removeEventListener("mousedown",docClose,true);}
+function docClose(e){if(!e.target.closest(".popmenu")&&e.target!==plusbtn)closePop();}
+function placePop(m){const r=plusbtn.getBoundingClientRect();
+  m.style.left=Math.min(r.left,window.innerWidth-m.offsetWidth-8)+"px";
+  let top=r.top-m.offsetHeight-6;if(top<8)top=r.bottom+6;m.style.top=top+"px";
+  document.addEventListener("mousedown",docClose,true);}
+function insertRef(engine,rel){
+  const ref=(engine==="claude"?"@":"")+rel+" ";
+  const s=box.selectionStart??box.value.length;
+  box.value=box.value.slice(0,s)+ref+box.value.slice(s);
+  box.focus();box.dispatchEvent(new Event("input"));
+}
+async function openFileBrowser(engine,rel){
+  closePop();
+  const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
+  m.innerHTML='<div class="pmhead">載入中…</div>';placePop(m);
+  let data={};try{data=await(await fetch("/api/files?dir="+encodeURIComponent(rel||""))).json();}catch(e){}
+  m.innerHTML="";
+  const head=document.createElement("div");head.className="pmhead";
+  head.innerHTML=`<span class="ic">${engine==="claude"?"⚡":"⚡"}</span>${engine==="claude"?"Claude":"Codex"} 加入  ·  /${escapeHtml(data.rel||"")}`;
+  m.appendChild(head);
+  if(data.rel){
+    const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">↑</span>上一層';
+    up.onclick=()=>openFileBrowser(engine,data.rel.split("/").slice(0,-1).join("/"));m.appendChild(up);
+  }
+  (data.entries||[]).forEach(en=>{
+    const it=document.createElement("div");it.className="pmi";
+    it.innerHTML=`<span class="ic">${en.dir?"📁":"📄"}</span>${escapeHtml(en.name)}`;
+    const childRel=(data.rel?data.rel+"/":"")+en.name;
+    it.onclick=()=>{if(en.dir)openFileBrowser(engine,childRel);else{insertRef(engine,childRel);closePop();}};
+    m.appendChild(it);
+  });
+  if(!(data.entries||[]).length){const e=document.createElement("div");e.className="pmhead";
+    e.textContent=data.base?"(此層沒有可加入的檔案)":"(請先設定專案目錄)";m.appendChild(e);}
+  placePop(m);
+}
+function chooseAgentThen(cb){
+  closePop();
+  const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
+  m.innerHTML='<div class="pmhead">+ 加入到哪個</div>';
+  [["claude","Claude","cl"],["codex","Codex","cx"]].forEach(([e,label,cls])=>{
+    const it=document.createElement("div");it.className="pmi "+cls;
+    it.innerHTML=`<span class="ic">⚡</span>${label}`;it.onclick=()=>cb(e);m.appendChild(it);
+  });
+  placePop(m);
+}
+plusbtn.onclick=()=>{
+  if(document.querySelector(".popmenu")){closePop();return;}
+  if(target==="both")chooseAgentThen(e=>openFileBrowser(e,""));
+  else openFileBrowser(target,"");
+};
 </script>
 </body>
 </html>
