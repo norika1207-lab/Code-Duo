@@ -767,6 +767,19 @@ class H(BaseHTTPRequestHandler):
                 "claude_cwd": STATE["claude"]["cwd"], "codex_cwd": STATE["codex"]["cwd"]}))
         elif u.path == "/api/agent-config":
             self._send(200, json.dumps(AGENT_CFG))
+        elif u.path == "/api/projects":
+            # 可掛載的專案清單:共用專案 + 各 session 看過的不同 cwd
+            seen, out = set(), []
+            if SETTINGS["project"]:
+                out.append({"path": SETTINGS["project"], "label": os.path.basename(SETTINGS["project"]) + " (shared)"})
+                seen.add(SETTINGS["project"])
+            for eng in ("claude", "codex"):
+                for r in list_sessions(eng, limit=300):
+                    c = r.get("cwd")
+                    if c and c not in seen and os.path.isdir(c):
+                        seen.add(c)
+                        out.append({"path": c, "label": r.get("project") or os.path.basename(c)})
+            self._send(200, json.dumps(out[:40]))
         elif u.path == "/api/files":
             base = SETTINGS["project"] or HERE
             rel = q.get("dir", [""])[0]
@@ -895,6 +908,19 @@ class H(BaseHTTPRequestHandler):
                         STATE[e]["id"] = None
                         STREAK[e] = 0
             self._send(200, json.dumps({"ok": True, "cleared": engines}))
+        elif self.path == "/api/agent-cwd":
+            eng = req.get("engine")
+            cwd = (req.get("cwd") or "").strip()
+            if eng not in STATE:
+                self._send(400, json.dumps({"error": "bad engine"})); return
+            if cwd and not os.path.isdir(os.path.expanduser(cwd)):
+                self._send(400, json.dumps({"error": f"directory not found: {cwd}"})); return
+            cwd = os.path.expanduser(cwd) if cwd else (SETTINGS["project"] or HERE)
+            with LOCK:
+                STATE[eng]["cwd"] = cwd
+                STATE[eng]["id"] = None
+                STREAK[eng] = 0
+            self._send(200, json.dumps({"ok": True, "cwd": cwd}))
         elif self.path == "/api/reset":
             with LOCK:
                 for e in STATE:

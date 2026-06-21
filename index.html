@@ -168,6 +168,20 @@
   .popmenu .pmi:hover{background:#2a3142}
   .popmenu .ic{color:var(--dim);flex:none;width:15px;text-align:center}
   .popmenu .pmi.cl .ic{color:var(--claude)} .popmenu .pmi.cx .ic{color:var(--codex)}
+  /* center modal for starting a new session */
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:80;display:none;
+        align-items:center;justify-content:center}
+  .mask.on{display:flex}
+  .nmodal{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:min(640px,92vw);
+          padding:20px 22px;display:flex;flex-direction:column;gap:9px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .nmtitle{font-size:17px;font-weight:700}
+  .nmlbl{font-size:11px;color:var(--dim);margin-top:5px;letter-spacing:.3px}
+  .nmodal select{background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:8px;
+                 padding:8px 10px;font-size:13px}
+  .nmodal textarea{background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:10px;
+                   padding:11px 13px;font:14px/1.55 inherit;min-height:130px;max-height:340px;resize:vertical}
+  .nmrow{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
+  #newgo{background:var(--user);border-color:var(--user);color:#fff;font-weight:600;padding:8px 18px}
 </style>
 </head>
 <body>
@@ -236,6 +250,20 @@
       <button class="sendico" id="send" title="Send (Enter)">↵</button>
     </div>
   </footer>
+
+  <div class="mask" id="newmask">
+    <div class="nmodal">
+      <div class="nmtitle" id="newtitle">New session</div>
+      <div class="nmlbl">Attach to project (working directory)</div>
+      <select id="newproj"></select>
+      <div class="nmlbl">First message</div>
+      <textarea id="newmsg" placeholder="What should this session start with?"></textarea>
+      <div class="nmrow">
+        <button id="newcancel" class="mini">Cancel</button>
+        <button id="newgo">Start session</button>
+      </div>
+    </div>
+  </div>
 
 <script>
 let target="both";
@@ -432,13 +460,51 @@ function buildSelect(engine,kind,cur){
     const chip=document.createElement("span");chip.className="usechip";chip.id="use-"+e;bar.appendChild(chip);
   });
 })();
-// + New chat: reset that agent's session + clear its column
-document.querySelectorAll(".newlink").forEach(b=>b.onclick=async()=>{
-  const e=b.dataset.e;
-  await fetch("/api/clear-context",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({engine:e})});
-  logs[e].innerHTML="";activeId[e]=null;tags[e].textContent="new chat";
+// + New chat: open the center "new session" modal (first message + which project)
+let newEngine="claude";
+const newmask=document.getElementById("newmask");
+async function openNewModal(engine){
+  newEngine=engine;
+  const ttl=document.getElementById("newtitle");
+  ttl.textContent="New "+(engine==="claude"?"Claude":"Codex")+" session";
+  ttl.style.color=engine==="claude"?"var(--claude)":"var(--codex)";
+  document.getElementById("newmsg").value="";
+  const sel=document.getElementById("newproj");
+  sel.innerHTML='<option value="">None (default home)</option>';
+  try{const ps=await(await fetch("/api/projects")).json();
+    ps.forEach(p=>{const o=document.createElement("option");o.value=p.path;o.textContent=p.label;sel.appendChild(o);});}catch(e){}
+  newmask.classList.add("on");document.getElementById("newmsg").focus();
+}
+function closeNew(){newmask.classList.remove("on");}
+document.getElementById("newcancel").onclick=closeNew;
+newmask.onclick=e=>{if(e.target===newmask)closeNew();};
+async function startNewSession(){
+  const engine=newEngine;
+  const cwd=document.getElementById("newproj").value;
+  const text=document.getElementById("newmsg").value.trim();
+  await fetch("/api/agent-cwd",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({engine,cwd})});
+  closeNew();
+  logs[engine].innerHTML="";activeId[engine]=null;tags[engine].textContent="idle";
+  if(!text)return;
+  add(engine,"user","You",text);
+  tags[engine].textContent="thinking…";
+  const think=add(engine,"bot think","","▍ thinking…");
+  try{
+    const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:engine,text})});
+    const data=await r.json();think.remove();tags[engine].textContent="idle";
+    const res=data[engine];
+    if(res)renderBot(engine,res,engine+" · "+(res.ms/1000).toFixed(1)+"s");
+    else add(engine,"bot","System","[no response] "+(data.error||""));
+  }catch(e){think.remove();tags[engine].textContent="idle";add(engine,"bot","System","[request failed] "+e);}
+}
+document.getElementById("newgo").onclick=startNewSession;
+document.getElementById("newmsg").addEventListener("keydown",e=>{
+  if(e.isComposing||e.keyCode===229)return;
+  if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)){e.preventDefault();startNewSession();}
 });
+document.querySelectorAll(".newlink").forEach(b=>b.onclick=()=>openNewModal(b.dataset.e));
 
 // ---- side history rails (auto-sync every second, no repaint if unchanged) ----
 const collapsedG={claude:new Set(),codex:new Set()};
