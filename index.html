@@ -463,7 +463,6 @@ function buildSelect(engine,kind,cur){
           body:JSON.stringify({engine:"claude",fast:now})});};
       bar.appendChild(ft);
     }
-    const chip=document.createElement("span");chip.className="usechip";chip.id="use-"+e;bar.appendChild(chip);
   });
 })();
 // + New chat: open the center "new session" modal (first message + which project)
@@ -570,7 +569,7 @@ async function loadSession(engine,s,el){
     add(engine,(m.role==="user"?"user":"bot")+" old",m.role==="user"?"You (old)":engine+" (old)",m.text);
   });
   add(engine,"divider","","── history above · continuing below ──");
-  tags[engine].textContent="resumed "+s.id.slice(0,6);
+  tags[engine].textContent="idle";
 }
 
 // ---- per-session ⋮ menu + archived toggle ----
@@ -625,8 +624,6 @@ async function refreshTokens(){
         <button class="clearbtn" data-v="${v}" title="Clear ${v} context: next message starts a fresh session and stops re-caching the old context (saves tokens)">Clear cache</button></div>`;
     }).join("");
     document.querySelectorAll(".clearbtn").forEach(b=>b.onclick=()=>clearContext(b.dataset.v));
-    ["claude","codex"].forEach(v=>{const c=document.getElementById("use-"+v);
-      if(c&&d[v])c.textContent=`$${d[v].cost.toFixed(2)} · cache ${d[v].cache_pct}%`;});
   }catch(e){}
 }
 async function clearContext(engine){
