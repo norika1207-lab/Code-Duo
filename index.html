@@ -201,46 +201,65 @@ document.getElementById("reset").onclick=async()=>{
   document.querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
 };
 
-// ---- 兩側歷史側欄 ----
-async function loadRail(engine){
-  rails[engine].innerHTML="載入中…";
+// ---- 兩側歷史側欄(定時自動同步,沒變不重畫) ----
+const collapsedG={claude:new Set(),codex:new Set()};
+const activeId={claude:null,codex:null};
+const railSig={claude:null,codex:null};
+const railInit={claude:false,codex:false};
+
+async function loadRail(engine,force){
+  let rows;
   try{
     const r=await fetch(`/api/sessions?engine=${engine}${hiddenMode[engine]?"&hidden=1":""}`);
-    if(!r.ok){rails[engine].innerHTML=`<div style='padding:10px;color:#e08;font-size:11px'>[HTTP ${r.status}] 你可能開在預覽面板而非 http://localhost:8765</div>`;return;}
-    const rows=await r.json();
-    if(!rows.length){rails[engine].innerHTML="<div style='padding:10px;color:#646a80'>（無舊 session）</div>";return;}
-    // 依專案顯示名分組(後端已對齊官方標籤)，組內依時間新到舊
-    const groups={};
-    rows.forEach(s=>{(groups[s.project||s.cwd||"(未知)"] ||= []).push(s);});
-    const order=Object.keys(groups).sort((a,b)=>
-      Math.max(...groups[b].map(x=>x.ts))-Math.max(...groups[a].map(x=>x.ts)));
-    rails[engine].innerHTML="";
-    order.forEach((label,gi)=>{
-      const list=groups[label].sort((a,b)=>b.ts-a.ts);
-      const cwd=list[0].cwd||"";
-      const g=document.createElement("div");g.className="sgroup"+(gi>0?" collapsed":"");
-      const head=document.createElement("div");head.className="ghead";
-      head.innerHTML=`<span class="arr">▾</span><span class="gname" title="${escapeHtml(cwd)}">${escapeHtml(label)}</span><span class="gcount">${list.length}</span>`;
-      head.onclick=()=>g.classList.toggle("collapsed");
-      g.appendChild(head);
-      const body=document.createElement("div");body.className="gbody";
-      list.forEach(s=>{
-        const el=document.createElement("div");
-        el.className="sitem"+(s.pinned?" pin":"")+(s.archived?" arch":"");el.dataset.id=s.id;
-        const dt=new Date(s.ts*1000).toLocaleString("zh-TW",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-        const label=s.title||s.first||"(無標題)";
-        el.title=`${dt} · ${s.id.slice(0,8)}\n${s.cwd||""}`;
-        el.innerHTML=`<span class="ico">${s.pinned?"●":"○"}</span><span class="lbl">${escapeHtml(label)}</span><span class="dots" title="更多">⋮</span>`;
-        el.onclick=(e)=>{if(e.target.classList.contains("dots")){e.stopPropagation();openMenu(e,engine,s);}else loadSession(engine,s,el);};
-        body.appendChild(el);
-      });
-      g.appendChild(body);
-      rails[engine].appendChild(g);
+    if(!r.ok){if(!railInit[engine])rails[engine].innerHTML=`<div style='padding:10px;color:#e08;font-size:11px'>[HTTP ${r.status}] 請用 http://localhost:8765 開,不是預覽面板</div>`;return;}
+    rows=await r.json();
+  }catch(e){if(!railInit[engine])rails[engine].innerHTML="[載入失敗] "+e;return;}
+  // 簽章比對:資料沒變就不重畫,避免閃爍跟打斷你正在操作
+  const sig=JSON.stringify(rows.map(s=>[s.id,s.title||s.first,s.ts,!!s.pinned,!!s.archived,s.project]));
+  if(!force && sig===railSig[engine]) return;
+  railSig[engine]=sig;
+  renderRail(engine,rows);
+}
+
+function renderRail(engine,rows){
+  const scroll=rails[engine].scrollTop;
+  if(!rows.length){rails[engine].innerHTML="<div style='padding:10px;color:#646a80'>（無 session）</div>";railInit[engine]=true;return;}
+  const groups={};
+  rows.forEach(s=>{(groups[s.project||s.cwd||"(未知)"] ||= []).push(s);});
+  const order=Object.keys(groups).sort((a,b)=>
+    Math.max(...groups[b].map(x=>x.ts))-Math.max(...groups[a].map(x=>x.ts)));
+  if(!railInit[engine]) order.forEach((label,gi)=>{if(gi>0)collapsedG[engine].add(label);});  // 首次:只展開最近一組
+  rails[engine].innerHTML="";
+  order.forEach((label)=>{
+    const list=groups[label].sort((a,b)=>b.ts-a.ts);
+    const cwd=list[0].cwd||"";
+    const g=document.createElement("div");g.className="sgroup"+(collapsedG[engine].has(label)?" collapsed":"");
+    const head=document.createElement("div");head.className="ghead";
+    head.innerHTML=`<span class="arr">▾</span><span class="gname" title="${escapeHtml(cwd)}">${escapeHtml(label)}</span><span class="gcount">${list.length}</span>`;
+    head.onclick=()=>{g.classList.toggle("collapsed");
+      g.classList.contains("collapsed")?collapsedG[engine].add(label):collapsedG[engine].delete(label);};
+    g.appendChild(head);
+    const body=document.createElement("div");body.className="gbody";
+    list.forEach(s=>{
+      const el=document.createElement("div");
+      el.className="sitem"+(s.pinned?" pin":"")+(s.archived?" arch":"")+(s.id===activeId[engine]?" active":"");
+      el.dataset.id=s.id;
+      const dt=new Date(s.ts*1000).toLocaleString("zh-TW",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+      const lab=s.title||s.first||"(無標題)";
+      el.title=`${dt} · ${s.id.slice(0,8)}\n${s.cwd||""}`;
+      el.innerHTML=`<span class="ico">${s.pinned?"●":"○"}</span><span class="lbl">${escapeHtml(lab)}</span><span class="dots" title="更多">⋮</span>`;
+      el.onclick=(e)=>{if(e.target.classList.contains("dots")){e.stopPropagation();openMenu(e,engine,s);}else loadSession(engine,s,el);};
+      body.appendChild(el);
     });
-  }catch(e){rails[engine].innerHTML="[載入失敗] "+e;}
+    g.appendChild(body);
+    rails[engine].appendChild(g);
+  });
+  railInit[engine]=true;
+  rails[engine].scrollTop=scroll;
 }
 
 async function loadSession(engine,s,el){
+  activeId[engine]=s.id;
   rails[engine].querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
   el.classList.add("active");
   tags[engine].textContent="載入中…";
@@ -283,10 +302,12 @@ function openMenu(e,engine,s){
   m.style.top=(r.bottom+4)+"px";
   setTimeout(()=>document.addEventListener("click",closeMenu,{once:true}),0);
 }
-document.querySelectorAll(".rf").forEach(b=>b.onclick=()=>loadRail(b.dataset.e));
+document.querySelectorAll(".rf").forEach(b=>b.onclick=()=>loadRail(b.dataset.e,true));
 document.querySelectorAll(".hidtog").forEach(b=>b.onclick=()=>{
-  const e=b.dataset.e;hiddenMode[e]=!hiddenMode[e];b.classList.toggle("on",hiddenMode[e]);loadRail(e);});
-loadRail("claude");loadRail("codex");
+  const e=b.dataset.e;hiddenMode[e]=!hiddenMode[e];b.classList.toggle("on",hiddenMode[e]);railSig[e]=null;loadRail(e,true);});
+loadRail("claude",true);loadRail("codex",true);
+// 定時自動同步:你在 Claude/Codex 那邊新開的對話、改的名字,這邊每 8 秒自動跟上
+setInterval(()=>{loadRail("claude");loadRail("codex");},8000);
 </script>
 </body>
 </html>
