@@ -24,13 +24,15 @@
   button:hover{border-color:#3a3f50}
 
   /* 頂部兩列面板(Token / 照妖鏡),stitch 卡片風 */
-  .panels{padding:9px 14px;display:flex;flex-direction:column;gap:8px;
+  .panels{padding:9px 0;display:flex;flex-direction:column;gap:8px;
           background:#101218;border-bottom:1px solid var(--line)}
-  .prow{display:flex;align-items:center;gap:12px;min-height:34px}
-  .plabel{font-size:10px;letter-spacing:1.2px;color:var(--dim);width:130px;flex:none;font-weight:700}
-  .tcards{display:flex;gap:10px;flex:1;flex-wrap:wrap}
-  .tcard{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);
-         border-radius:12px;padding:7px 16px}
+  .prow{display:flex;align-items:center;min-height:34px}
+  .plabel{font-size:10px;letter-spacing:1.2px;color:var(--dim);width:230px;flex:none;font-weight:700;
+          padding:0 14px}
+  .pright{width:230px;flex:none}
+  .tcards{display:flex;gap:10px;flex:1;min-width:0}
+  .tcard{flex:1;min-width:0;display:flex;align-items:center;gap:14px;background:var(--panel);
+         border:1px solid var(--line);border-radius:12px;padding:7px 16px}
   .tcard .vn{font-size:12px;font-weight:700}
   .tcard.claude .vn{color:var(--claude)} .tcard.codex .vn{color:var(--codex)}
   .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
@@ -50,7 +52,7 @@
   .stage{flex:1;display:flex;gap:1px;overflow:hidden}
 
   /* 兩側歷史側欄 */
-  .rail{width:230px;min-width:180px;background:var(--rail);display:flex;flex-direction:column;overflow:hidden}
+  .rail{width:230px;flex:none;background:var(--rail);display:flex;flex-direction:column;overflow:hidden}
   .rail .rhead{padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line);
                display:flex;align-items:center;gap:6px;color:var(--dim)}
   .rail .rhead .d{width:8px;height:8px;border-radius:50%}
@@ -87,7 +89,7 @@
   .sitem .cwd{font-size:9px;color:#646a80;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* 中間兩個對話框 */
-  .col{flex:1;display:flex;flex-direction:column;background:var(--panel);overflow:hidden;min-width:260px}
+  .col{flex:1;display:flex;flex-direction:column;background:var(--panel);overflow:hidden;min-width:0}
   .col h2{margin:0;padding:9px 14px;font-size:13px;border-bottom:1px solid var(--line);
           display:flex;align-items:center;gap:8px}
   .dot{width:9px;height:9px;border-radius:50%}
@@ -151,8 +153,8 @@
   </header>
 
   <div class="panels">
-    <div class="prow"><span class="plabel">TOKEN · 近 24h</span><div class="tcards" id="tcards">載入中…</div></div>
-    <div class="prow"><span class="plabel">照妖鏡 · AI 工作行為</span><div class="bstrip" id="bstrip">—</div></div>
+    <div class="prow"><span class="plabel">TOKEN · 近 24h</span><div class="tcards" id="tcards">載入中…</div><div class="pright"></div></div>
+    <div class="prow"><span class="plabel">照妖鏡 · AI 工作行為</span><div class="bstrip" id="bstrip">—</div><div class="pright"></div></div>
   </div>
 
   <div class="stage">
