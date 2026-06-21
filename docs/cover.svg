@@ -1,0 +1,145 @@
+<svg width="1440" height="864" viewBox="0 0 1440 864" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,system-ui,sans-serif">
+  <defs>
+    <style>
+      .txt{fill:#e6e8ee} .dim{fill:#8b90a0} .cl{fill:#d97757} .cx{fill:#5b8def} .both{fill:#10a37f}
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+      .b{font-weight:700}
+    </style>
+  </defs>
+
+  <!-- background -->
+  <rect width="1440" height="864" fill="#0e0f13"/>
+
+  <!-- ===== header ===== -->
+  <rect x="0" y="0" width="1440" height="44" fill="#0e0f13"/>
+  <line x1="0" y1="44" x2="1440" y2="44" stroke="#252834"/>
+  <rect x="14" y="11" width="22" height="22" rx="6" fill="#16181f" stroke="#2a2f40"/>
+  <path d="M22 16 L17 22 L22 28" fill="none" stroke="#d97757" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M30 16 L35 22 L30 28" fill="none" stroke="#5b8def" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="26" y1="15" x2="26" y2="29" stroke="#10a37f" stroke-width="1.6" stroke-linecap="round"/>
+  <text x="46" y="29" class="txt b" font-size="16">Code Duo</text>
+  <text x="132" y="29" class="dim" font-size="12.5">Claude × Codex · one window · subscription, no API</text>
+  <text x="1150" y="28" class="dim" font-size="11">Project: demo-api</text>
+  <rect x="1244" y="13" width="86" height="20" rx="6" fill="#16181f" stroke="#252834"/>
+  <text x="1287" y="27" class="txt" font-size="11" text-anchor="middle">Set project</text>
+  <rect x="1340" y="13" width="86" height="20" rx="6" fill="#16181f" stroke="#252834"/>
+  <text x="1383" y="27" class="txt" font-size="11" text-anchor="middle">Clear chat</text>
+
+  <!-- ===== panels: watchdog + token ===== -->
+  <rect x="0" y="44" width="1440" height="86" fill="#101218"/>
+  <line x1="0" y1="130" x2="1440" y2="130" stroke="#252834"/>
+  <!-- watchdog pill -->
+  <rect x="14" y="54" width="120" height="22" rx="11" fill="#0f1f16" stroke="#1f5a36"/>
+  <text x="74" y="69" font-size="11.5" fill="#4ad07a" text-anchor="middle">✓ 3 consistent</text>
+  <!-- token card: Claude -->
+  <rect x="232" y="84" width="478" height="38" rx="10" fill="#16181f" stroke="#252834"/>
+  <text x="252" y="108" class="cl b" font-size="13">Claude</text>
+  <text x="330" y="103" class="txt b" font-size="14">$4.20</text><text x="330" y="116" class="dim" font-size="9">cost</text>
+  <text x="420" y="103" class="txt b" font-size="14">12.4M</text><text x="420" y="116" class="dim" font-size="9">tokens</text>
+  <text x="510" y="103" class="txt b" font-size="14">94%</text><text x="510" y="116" class="dim" font-size="9">cache hit</text>
+  <text x="585" y="103" class="txt b" font-size="14">5</text><text x="585" y="116" class="dim" font-size="9">sessions</text>
+  <rect x="628" y="93" width="68" height="20" rx="7" fill="#11141b" stroke="#252834"/>
+  <text x="662" y="107" class="dim" font-size="10" text-anchor="middle">Clear cache</text>
+  <!-- token card: Codex -->
+  <rect x="730" y="84" width="478" height="38" rx="10" fill="#16181f" stroke="#252834"/>
+  <text x="750" y="108" class="cx b" font-size="13">Codex</text>
+  <text x="828" y="103" class="txt b" font-size="14">$1.80</text><text x="828" y="116" class="dim" font-size="9">cost</text>
+  <text x="918" y="103" class="txt b" font-size="14">3.1M</text><text x="918" y="116" class="dim" font-size="9">tokens</text>
+  <text x="1008" y="103" class="txt b" font-size="14">88%</text><text x="1008" y="116" class="dim" font-size="9">cache hit</text>
+  <text x="1083" y="103" class="txt b" font-size="14">4</text><text x="1083" y="116" class="dim" font-size="9">sessions</text>
+  <rect x="1126" y="93" width="68" height="20" rx="7" fill="#11141b" stroke="#252834"/>
+  <text x="1160" y="107" class="dim" font-size="10" text-anchor="middle">Clear cache</text>
+
+  <!-- ===== stage ===== -->
+  <!-- Claude history rail -->
+  <rect x="0" y="130" width="220" height="678" fill="#121419"/>
+  <text x="16" y="156" class="cl b" font-size="12.5">+ New chat</text>
+  <line x1="0" y1="166" x2="220" y2="166" stroke="#252834"/>
+  <circle cx="16" cy="183" r="4" fill="#d97757"/>
+  <text x="28" y="187" class="dim" font-size="12">Claude history</text>
+  <text x="150" y="187" class="dim" font-size="11">Archived</text>
+  <text x="204" y="187" class="dim" font-size="12">⟳</text>
+  <line x1="0" y1="196" x2="220" y2="196" stroke="#252834"/>
+  <text x="14" y="218" font-size="11" fill="#aab b">▾ auth-service</text><text x="200" y="218" class="dim" font-size="11" text-anchor="end">3</text>
+  <text x="26" y="240" class="dim" font-size="10">○</text><text x="40" y="240" class="txt" font-size="12.5">Add rate limiting</text>
+  <text x="26" y="262" class="dim" font-size="10">○</text><text x="40" y="262" class="txt" font-size="12.5">Refactor token check</text>
+  <text x="26" y="284" class="dim" font-size="10">○</text><text x="40" y="284" class="txt" font-size="12.5">Fix login redirect</text>
+  <text x="14" y="312" font-size="11" fill="#aab b">▸ ungrouped</text><text x="200" y="312" class="dim" font-size="11" text-anchor="end">2</text>
+
+  <!-- Claude conversation column -->
+  <rect x="221" y="130" width="499" height="640" fill="#16181f"/>
+  <!-- user -->
+  <rect x="500" y="148" width="3" height="18" fill="#5b8def"/>
+  <text x="512" y="155" class="dim" font-size="11">You</text>
+  <text x="512" y="172" class="txt" font-size="13">Add rate limiting to the /api routes</text>
+  <!-- bot steps -->
+  <text x="237" y="200" class="dim" font-size="11">claude · 8.3s</text>
+  <rect x="237" y="210" width="3" height="58" fill="#252834"/>
+  <text x="248" y="223" class="dim mono" font-size="11.5">📖 read src/middleware/index.ts</text>
+  <text x="248" y="241" class="dim mono" font-size="11.5">✎ edited src/middleware/rateLimit.ts</text>
+  <text x="248" y="259" class="dim mono" font-size="11.5">⌘ npm test -- rate</text>
+  <text x="237" y="288" class="txt" font-size="13">Added a sliding-window limiter (100 req/min per IP) in</text>
+  <text x="237" y="307" class="txt" font-size="13"><tspan class="mono" fill="#cdd3df">rateLimit.ts</tspan> and wired it into the /api router. Tests pass.</text>
+  <rect x="237" y="322" width="118" height="22" rx="6" fill="#11141b" stroke="#252834"/>
+  <text x="296" y="337" class="dim" font-size="11" text-anchor="middle">→ Hand to Codex</text>
+  <rect x="362" y="322" width="110" height="22" rx="6" fill="#11141b" stroke="#252834"/>
+  <text x="417" y="337" class="dim" font-size="11" text-anchor="middle">→ Codex review</text>
+  <!-- claude cfgbar -->
+  <line x1="221" y1="734" x2="720" y2="734" stroke="#252834"/>
+  <rect x="221" y="734" width="499" height="36" fill="#101218"/>
+  <text x="237" y="756" class="dim" font-size="11">idle</text>
+  <rect x="270" y="744" width="80" height="18" rx="5" fill="#1a1d26" stroke="#252834"/><text x="310" y="757" class="txt" font-size="10.5" text-anchor="middle">Opus 4.8</text>
+  <rect x="358" y="744" width="92" height="18" rx="5" fill="#1a1d26" stroke="#252834"/><text x="404" y="757" class="txt" font-size="10.5" text-anchor="middle">Accept edits</text>
+  <rect x="458" y="744" width="56" height="18" rx="5" fill="#1a1d26" stroke="#252834"/><text x="486" y="757" class="txt" font-size="10.5" text-anchor="middle">High</text>
+  <rect x="522" y="744" width="52" height="18" rx="5" fill="#3a2d10" stroke="#caa23a"/><text x="548" y="757" font-size="10.5" fill="#ffd970" text-anchor="middle">⚡Fast</text>
+
+  <!-- Codex conversation column -->
+  <rect x="721" y="130" width="499" height="640" fill="#16181f"/>
+  <rect x="1000" y="148" width="3" height="18" fill="#5b8def"/>
+  <text x="1012" y="155" class="dim" font-size="11">You</text>
+  <text x="1012" y="172" class="txt" font-size="13">Add rate limiting to the /api routes</text>
+  <text x="737" y="200" class="dim" font-size="11">codex · 11.1s</text>
+  <rect x="737" y="210" width="3" height="40" fill="#252834"/>
+  <text x="748" y="223" class="dim mono" font-size="11.5">⌘ rg "router" src</text>
+  <text x="748" y="241" class="dim mono" font-size="11.5">✎ edited src/api/router.ts</text>
+  <text x="737" y="270" class="txt" font-size="13">Wrapped the router with a token-bucket middleware and</text>
+  <text x="737" y="289" class="txt" font-size="13">added the window config in <tspan class="mono" fill="#cdd3df">api/config.ts</tspan>.</text>
+  <rect x="737" y="304" width="120" height="22" rx="6" fill="#11141b" stroke="#252834"/>
+  <text x="797" y="319" class="dim" font-size="11" text-anchor="middle">→ Hand to Claude</text>
+  <rect x="864" y="304" width="112" height="22" rx="6" fill="#11141b" stroke="#252834"/>
+  <text x="920" y="319" class="dim" font-size="11" text-anchor="middle">→ Claude review</text>
+  <!-- codex cfgbar -->
+  <line x1="721" y1="734" x2="1220" y2="734" stroke="#252834"/>
+  <rect x="721" y="734" width="499" height="36" fill="#101218"/>
+  <text x="737" y="756" class="dim" font-size="11">idle</text>
+  <rect x="770" y="744" width="78" height="18" rx="5" fill="#1a1d26" stroke="#252834"/><text x="809" y="757" class="txt" font-size="10.5" text-anchor="middle">GPT-5.5</text>
+  <rect x="856" y="744" width="118" height="18" rx="5" fill="#1a1d26" stroke="#252834"/><text x="915" y="757" class="txt" font-size="10.5" text-anchor="middle">Workspace-write</text>
+  <rect x="982" y="744" width="78" height="18" rx="5" fill="#1a1d26" stroke="#252834"/><text x="1021" y="757" class="txt" font-size="10.5" text-anchor="middle">Reasoning</text>
+
+  <!-- Codex history rail -->
+  <rect x="1220" y="130" width="220" height="678" fill="#121419"/>
+  <text x="1424" y="156" class="cx b" font-size="12.5" text-anchor="end">+ New chat</text>
+  <line x1="1220" y1="166" x2="1440" y2="166" stroke="#252834"/>
+  <circle cx="1236" cy="183" r="4" fill="#5b8def"/>
+  <text x="1248" y="187" class="dim" font-size="12">Codex history</text>
+  <text x="1370" y="187" class="dim" font-size="11">Archived</text>
+  <text x="1424" y="187" class="dim" font-size="12" text-anchor="end">⟳</text>
+  <line x1="1220" y1="196" x2="1440" y2="196" stroke="#252834"/>
+  <text x="1234" y="218" font-size="11" fill="#aab b">▾ Lobster Dashboard</text><text x="1424" y="218" class="dim" font-size="11" text-anchor="end">2</text>
+  <text x="1246" y="240" class="dim" font-size="10">○</text><text x="1260" y="240" class="txt" font-size="12.5">GA4 funnel report</text>
+  <text x="1246" y="262" class="dim" font-size="10">○</text><text x="1260" y="262" class="txt" font-size="12.5">MBTI card layout</text>
+  <text x="1234" y="290" font-size="11" fill="#aab b">▸ scraper</text><text x="1424" y="290" class="dim" font-size="11" text-anchor="end">3</text>
+
+  <!-- ===== footer ===== -->
+  <line x1="0" y1="808" x2="1440" y2="808" stroke="#252834"/>
+  <rect x="0" y="808" width="1440" height="56" fill="#0e0f13"/>
+  <rect x="14" y="820" width="36" height="32" rx="8" fill="#16181f" stroke="#252834"/>
+  <text x="32" y="841" class="dim" font-size="18" text-anchor="middle">+</text>
+  <rect x="58" y="820" width="64" height="32" rx="8" fill="#16181f" stroke="#252834"/><text x="90" y="840" class="txt" font-size="12" text-anchor="middle">Claude</text>
+  <rect x="128" y="820" width="64" height="32" rx="8" fill="#16181f" stroke="#252834"/><text x="160" y="840" class="txt" font-size="12" text-anchor="middle">Codex</text>
+  <rect x="198" y="820" width="60" height="32" rx="8" fill="#1d2740" stroke="#10a37f"/><text x="228" y="840" class="txt" font-size="12" text-anchor="middle">Both</text>
+  <rect x="268" y="820" width="58" height="32" rx="8" fill="#11141b" stroke="#252834"/><text x="297" y="840" class="both b" font-size="13" text-anchor="middle">Both:</text>
+  <rect x="326" y="820" width="1058" height="32" rx="8" fill="#0e0f13" stroke="#252834"/>
+  <text x="340" y="840" class="dim" font-size="13">Press Tab to switch Claude / Codex / Both…</text>
+  <rect x="1392" y="824" width="28" height="24" rx="7" fill="#5b8def"/><text x="1406" y="841" fill="#fff" font-size="13" text-anchor="middle">↵</text>
+</svg>

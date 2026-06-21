@@ -1,56 +1,53 @@
 # Code Duo
 
-一個介面，同時跟 Claude 與 Codex 兩個 AI 工程師協作。`@claude` / `@codex` / `@both` 路由，兩邊並行回話、各自保留上下文，還能把過去的 session 接回來續聊。
+**Two AI coding agents — Claude and Codex — collaborating in one window.** Route a prompt to either or both, watch each one work step by step, hand work from one to the other, and keep an eye on cost and on whether the AI actually did what it claimed.
 
-重點：**不走 API，走訂閱。** 背後驅動的是你機器上已登入的 `claude` 與 `codex` CLI，認證沿用你的 Max / ChatGPT 訂閱，不需要也不會用到 API key。
+No API keys. Code Duo drives the `claude` and `codex` CLIs you already have, authenticated with your existing Max / ChatGPT subscriptions.
 
-## 功能
+![Code Duo](docs/cover.svg)
 
-- 單一聊天介面，左 Claude、右 Codex，同時載入
-- `@claude` / `@codex` / `@both` 指定對象，`@both` 兩顆並行
-- 跨輪接續記憶（Claude `--resume`、Codex `exec resume`）
-- 兩側歷史側欄：依專案分組、顯示官方對話標題、點一下即接續舊對話
-- 頂部 Token 面板:解析本機 jsonl 算近 24h 成本 / token / 快取命中率(Claude + Codex,參考 mercury-cache-panel)
-- 頂部照妖鏡:檢查 agent 宣稱建立/修改的檔案有沒有實證(找不到/空檔就示警,參考 AI-Lies-Monitor)
-- 每條對話的 ⋮ 選單：重新命名、置頂、封存、移除（duo 本地覆寫，不動官方 App 資料）
+## Why
 
-## 需求
+When you pair-program with an AI you often want a second opinion, or to hand a half-finished change to a different model, or to run the same task two ways and compare. Doing that across two separate apps is clumsy. Code Duo puts both agents side by side, working on the same project, and adds the things that make a multi-agent session trustworthy: live step-by-step output, cross-review, token/cost tracking, and a watchdog that flags when an agent says it did work but the disk never changed.
 
-- macOS
-- Claude Code CLI（`claude`，已用訂閱登入）
-- Codex（`/Applications/Codex.app`，已用 ChatGPT 訂閱登入）
-- Python 3（標準庫即可，無第三方套件）
+## Features
 
-## 啟動
+- **One window, two agents.** Press `Tab` to switch target — Claude → Codex → Both. `Both` runs the same prompt through both in parallel so you can compare.
+- **Live streaming.** See each agent work as it happens: narration, tool steps (`⌘` commands, `✎` file edits, `📖` reads), then the answer — not just a final blob.
+- **Hand-off & cross-review.** Every reply has `→ Hand to …` and `→ … review` so one agent can take over or audit the other's work, all on the same project files.
+- **Shared project.** Point both agents at a real project directory; whatever one writes, the other can read.
+- **Per-agent controls.** Model, permission/sandbox mode, reasoning effort, and Fast mode — wired straight to the CLI flags.
+- **History rails.** Your real Claude and Codex sessions, grouped by project (including Claude's custom groups), with clean AI titles; click one to resume it, or start a new session from a center dialog.
+- **Token panel.** Per-vendor cost, tokens, cache-hit rate, sessions for the last 24h, parsed locally — plus one-click **Clear cache** to drop a bloated context.
+- **Watchdog.** Each turn compares what the AI *claimed* against what *actually changed on disk*, and flags busywork ("5 actions claimed, 0 files changed") or going in circles ("looping 3×").
+- **Add files.** Upload from your computer or drag-and-drop into the input; the file is saved into the project so the agent can read it.
 
-```bash
-./start.sh
-# 或
-python3 app.py
-```
+## Requirements
 
-開瀏覽器到 http://localhost:8765
+- macOS (Linux/Windows path discovery is built in but less tested)
+- **Claude Code** CLI (`claude`), signed in with your subscription
+- **Codex** (`/Applications/Codex.app`), signed in with your ChatGPT subscription
+- Python 3 (standard library only — no third-party packages)
 
-## 自動偵測與可攜性
+Code Duo auto-detects the CLIs and your session locations at startup, across default install paths, and respects `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `DUO_CLAUDE_BIN` / `DUO_CODEX_BIN`.
 
-啟動時會自動偵測 CLI 與 session 存放位置，跨 macOS / Linux / Windows，每個人裝在哪都能用：
-
-- `claude` / `codex` 執行檔：先找 PATH，再找常見安裝位置（Homebrew、`/usr/local/bin`、`~/.local/bin`、macOS 上的 `Codex.app` bundle）
-- Claude session：讀 `CLAUDE_CONFIG_DIR`（預設 `~/.claude`）的 `projects/`；有裝桌面版就用它的官方索引拿乾淨標題，沒裝就降級用 CLI jsonl 的 `aiTitle`
-- Codex session：讀 `CODEX_HOME`（預設 `~/.codex`）
-
-找不到時用環境變數手動指定：
+## Quick start
 
 ```bash
-DUO_CLAUDE_BIN=/path/to/claude DUO_CODEX_BIN=/path/to/codex python3 app.py
+./start.sh          # or: python3 app.py
 ```
 
-偵測結果在啟動時會印出來，也可打 `GET /api/engines` 查。
+Open **http://localhost:8765** in a browser. The startup banner prints which CLIs were detected.
 
-## 架構
+## Architecture
 
-- `app.py` — 純標準庫 HTTP server，把兩個 CLI 當引擎以無頭模式驅動
-- `index.html` — 前端介面（vanilla JS）
-- `logo.svg` — 標誌
+- `app.py` — pure-stdlib HTTP server. Drives the two CLIs in streaming mode (`claude --output-format stream-json`, `codex exec --json`), parses their events, and streams normalized steps to the browser as NDJSON.
+- `index.html` — the whole UI (vanilla JS, no build step).
+- `logo.svg`, `docs/cover.svg` — brand mark and cover image.
 
-標題與專案分組讀自各 App 的官方索引：Claude 讀 `~/Library/Application Support/Claude/claude-code-sessions/`，Codex 讀 `~/.codex/session_index.jsonl` 與 `~/.codex/.codex-global-state.json`。
+Titles and grouping come from each app's own local data: Claude's desktop session index and custom groups (read from its Local Storage), Codex's `session_index.jsonl` and workspace labels — all read-only.
+
+## Notes
+
+- It's all subscription-driven; Code Duo never sends anything to a paid API.
+- Per-session renames / pins / archive are stored locally in Code Duo and never touch the official apps' data.
