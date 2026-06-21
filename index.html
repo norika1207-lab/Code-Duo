@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Duo — Claude × Codex</title>
+<link rel="icon" href="/logo.svg">
+<style>
+  :root{
+    --bg:#0e0f13; --panel:#16181f; --rail:#121419; --line:#252834; --txt:#e6e8ee; --dim:#8b90a0;
+    --claude:#d97757; --codex:#10a37f; --user:#5b8def;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--bg);
+       color:var(--txt);font:14px/1.6 -apple-system,"PingFang TC",system-ui,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:8px}
+  .brand .mark{display:block;flex:none}
+  header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
+  header .sub{color:var(--dim);font-size:12px}
+  header .right{margin-left:auto;display:flex;gap:8px}
+  button{background:var(--panel);color:var(--txt);border:1px solid var(--line);
+          border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
+  button:hover{border-color:#3a3f50}
+
+  .stage{flex:1;display:flex;gap:1px;overflow:hidden}
+
+  /* 兩側歷史側欄 */
+  .rail{width:230px;min-width:180px;background:var(--rail);display:flex;flex-direction:column;overflow:hidden}
+  .rail .rhead{padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line);
+               display:flex;align-items:center;gap:6px;color:var(--dim)}
+  .rail .rhead .d{width:8px;height:8px;border-radius:50%}
+  .rail.claude .rhead .d{background:var(--claude)} .rail.codex .rhead .d{background:var(--codex)}
+  .rail .rhead .rf{margin-left:auto;cursor:pointer}
+  .rlist{flex:1;overflow-y:auto;padding:6px}
+  .ghead{display:flex;align-items:center;gap:5px;padding:6px 7px;margin-top:4px;cursor:pointer;
+         font-size:11px;color:#aab;border-radius:6px;position:sticky;top:0;background:var(--rail)}
+  .ghead:hover{background:#1b1e27}
+  .ghead .gname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ghead .gcount{margin-left:auto;color:#646a80}
+  .ghead .arr{width:10px;display:inline-block;transition:transform .12s}
+  .sgroup.collapsed .arr{transform:rotate(-90deg)}
+  .sgroup.collapsed .gbody{display:none}
+  .gbody{padding-left:6px}
+  .sitem{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;cursor:pointer;
+         border:1px solid transparent}
+  .sitem:hover{background:#1b1e27}
+  .sitem.active{background:#1d2740;border-color:var(--user)}
+  .sitem .ico{color:#5a6075;font-size:10px;flex:none}
+  .sitem .lbl{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .sitem .dots{flex:none;opacity:0;color:var(--dim);padding:0 4px;border-radius:4px;font-weight:700}
+  .sitem:hover .dots{opacity:1}
+  .sitem .dots:hover{background:#2a2f40;color:#fff}
+  .sitem.pin .ico{color:var(--user)}
+  .sitem.arch{opacity:.5}
+  .ctxmenu{position:fixed;z-index:50;background:#1c1f28;border:1px solid var(--line);border-radius:8px;
+           padding:4px;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  .ctxmenu .ci{padding:7px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+  .ctxmenu .ci:hover{background:#2a3142}
+  .ctxmenu .ci.danger{color:#e06}
+  .rhead .hidtog{cursor:pointer;font-size:11px}
+  .rhead .hidtog.on{color:var(--user)}
+  .sitem .cwd{font-size:9px;color:#646a80;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 中間兩個對話框 */
+  .col{flex:1;display:flex;flex-direction:column;background:var(--panel);overflow:hidden;min-width:260px}
+  .col h2{margin:0;padding:9px 14px;font-size:13px;border-bottom:1px solid var(--line);
+          display:flex;align-items:center;gap:8px}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .col.claude .dot{background:var(--claude)} .col.codex .dot{background:var(--codex)}
+  .col h2 .tag{color:var(--dim);font-weight:400;font-size:11px;margin-left:auto}
+  .log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+  .msg{max-width:92%;padding:9px 12px;border-radius:10px;white-space:pre-wrap;word-break:break-word}
+  .msg.user{align-self:flex-end;background:#1e2638;border:1px solid #2b3650;color:#cfe0ff}
+  .msg.bot{align-self:flex-start;background:#1b1e27;border:1px solid var(--line)}
+  .msg.old{opacity:.7}
+  .msg .who{font-size:11px;color:var(--dim);margin-bottom:3px}
+  .msg.think{color:var(--dim);font-style:italic}
+  .divider{align-self:center;color:var(--dim);font-size:11px;border-top:1px dashed var(--line);
+           width:100%;text-align:center;padding-top:8px}
+
+  footer{border-top:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:flex-end}
+  .targets{display:flex;gap:6px}
+  .targets button{height:40px}
+  .targets button.on{border-color:var(--user);color:#fff;background:#1d2740}
+  .inputwrap{flex:1;position:relative;display:flex}
+  textarea{flex:1;resize:none;background:var(--bg);color:var(--txt);border:1px solid var(--line);
+           border-radius:10px;padding:9px 44px 9px 12px;font:14px/1.4 inherit;height:40px;min-height:40px;max-height:160px}
+  .sendico{position:absolute;right:6px;bottom:6px;width:28px;height:28px;padding:0;border-radius:7px;
+           display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;
+           background:var(--user);border-color:var(--user);color:#fff}
+  .sendico:hover{filter:brightness(1.1)}
+  .hint{color:var(--dim);font-size:11px;padding:0 14px 8px}
+</style>
+</head>
+<body>
+  <header>
+    <span class="brand">
+      <svg class="mark" width="26" height="26" viewBox="0 0 120 120">
+        <rect x="6" y="6" width="108" height="108" rx="26" fill="#16181f" stroke="#2a2f40" stroke-width="2"/>
+        <path d="M47 38 L26 60 L47 82" fill="none" stroke="#d97757" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M73 38 L94 60 L73 82" fill="none" stroke="#10a37f" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="60" y1="34" x2="60" y2="86" stroke="#5b8def" stroke-width="6" stroke-linecap="round"/>
+      </svg>
+      <h1>Code&nbsp;Duo</h1>
+    </span>
+    <span class="sub">Claude × Codex · 同窗協作 · 兩側點舊對話即接續 · 走訂閱不走 API</span>
+    <div class="right"><button id="reset">清空當前對話</button></div>
+  </header>
+
+  <div class="stage">
+    <!-- 最左：Claude 歷史 -->
+    <div class="rail claude">
+      <div class="rhead"><span class="d"></span>Claude 歷史<span class="hidtog" data-e="claude" title="顯示/隱藏封存">封存</span><span class="rf" data-e="claude" title="重新整理">⟳</span></div>
+      <div class="rlist" id="rail-claude">載入中…</div>
+    </div>
+
+    <!-- 中左：Claude 對話 -->
+    <div class="col claude">
+      <h2><span class="dot"></span>Claude<span class="tag" id="t-claude">idle</span></h2>
+      <div class="log" id="log-claude"></div>
+    </div>
+
+    <!-- 中右：Codex 對話 -->
+    <div class="col codex">
+      <h2><span class="dot"></span>Codex<span class="tag" id="t-codex">idle</span></h2>
+      <div class="log" id="log-codex"></div>
+    </div>
+
+    <!-- 最右：Codex 歷史 -->
+    <div class="rail codex">
+      <div class="rhead"><span class="d"></span>Codex 歷史<span class="hidtog" data-e="codex" title="顯示/隱藏封存">封存</span><span class="rf" data-e="codex" title="重新整理">⟳</span></div>
+      <div class="rlist" id="rail-codex">載入中…</div>
+    </div>
+  </div>
+
+  <div class="hint">左右兩側點一個舊 session 就接續它續聊。輸入框打 <b>@claude</b> / <b>@codex</b> / <b>@both</b> 指定對象；Enter 送出，Shift+Enter 換行。</div>
+  <footer>
+    <div class="targets">
+      <button data-t="claude">@claude</button>
+      <button data-t="codex">@codex</button>
+      <button data-t="both" class="on">@both</button>
+    </div>
+    <div class="inputwrap">
+      <textarea id="box" placeholder="跟兩個工程師說話…"></textarea>
+      <button class="sendico" id="send" title="送出 (Enter)">↵</button>
+    </div>
+  </footer>
+
+<script>
+let target="both";
+const box=document.getElementById("box");
+const logs={claude:document.getElementById("log-claude"),codex:document.getElementById("log-codex")};
+const tags={claude:document.getElementById("t-claude"),codex:document.getElementById("t-codex")};
+const rails={claude:document.getElementById("rail-claude"),codex:document.getElementById("rail-codex")};
+
+document.querySelectorAll(".targets button").forEach(b=>{
+  b.onclick=()=>{target=b.dataset.t;
+    document.querySelectorAll(".targets button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");};
+});
+
+function add(col,cls,who,text){
+  const d=document.createElement("div");d.className="msg "+cls;
+  d.innerHTML=(who?`<div class="who">${who}</div>`:"")+escapeHtml(text);
+  logs[col].appendChild(d);logs[col].scrollTop=logs[col].scrollHeight;return d;
+}
+function escapeHtml(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+async function send(){
+  let text=box.value.trim();if(!text)return;
+  let t=target;
+  const m=text.match(/^@(claude|codex|both)\s+/i);
+  if(m){t=m[1].toLowerCase();text=text.slice(m[0].length);}
+  box.value="";box.style.height="40px";
+  const cols=t==="both"?["claude","codex"]:[t];
+  cols.forEach(c=>add(c,"user","你",text));
+  const thinks={};
+  cols.forEach(c=>{tags[c].textContent="思考中…";thinks[c]=add(c,"bot think","","▍ 思考中…");});
+  try{
+    const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:t,text})});
+    const data=await r.json();
+    cols.forEach(c=>{
+      thinks[c].remove();tags[c].textContent="idle";
+      const res=data[c];
+      if(!res){add(c,"bot","系統","[沒回應] "+(data.error||""));return;}
+      const mm=add(c,"bot",c+" · "+(res.ms/1000).toFixed(1)+"s",res.text||"[空]");
+      if(!res.ok)mm.style.borderColor="#a33";
+    });
+  }catch(e){cols.forEach(c=>{thinks[c].remove();tags[c].textContent="idle";add(c,"bot","系統","[請求失敗] "+e);});}
+}
+document.getElementById("send").onclick=send;
+box.addEventListener("keydown",e=>{
+  if(e.isComposing||e.keyCode===229) return;          // 中文選字中,Enter 只確認字不送出
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}
+});
+box.addEventListener("input",()=>{box.style.height="40px";box.style.height=Math.min(box.scrollHeight,160)+"px";});
+document.getElementById("reset").onclick=async()=>{
+  await fetch("/api/reset",{method:"POST"});logs.claude.innerHTML="";logs.codex.innerHTML="";
+  document.querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
+};
+
+// ---- 兩側歷史側欄 ----
+async function loadRail(engine){
+  rails[engine].innerHTML="載入中…";
+  try{
+    const r=await fetch(`/api/sessions?engine=${engine}${hiddenMode[engine]?"&hidden=1":""}`);
+    if(!r.ok){rails[engine].innerHTML=`<div style='padding:10px;color:#e08;font-size:11px'>[HTTP ${r.status}] 你可能開在預覽面板而非 http://localhost:8765</div>`;return;}
+    const rows=await r.json();
+    if(!rows.length){rails[engine].innerHTML="<div style='padding:10px;color:#646a80'>（無舊 session）</div>";return;}
+    // 依專案顯示名分組(後端已對齊官方標籤)，組內依時間新到舊
+    const groups={};
+    rows.forEach(s=>{(groups[s.project||s.cwd||"(未知)"] ||= []).push(s);});
+    const order=Object.keys(groups).sort((a,b)=>
+      Math.max(...groups[b].map(x=>x.ts))-Math.max(...groups[a].map(x=>x.ts)));
+    rails[engine].innerHTML="";
+    order.forEach((label,gi)=>{
+      const list=groups[label].sort((a,b)=>b.ts-a.ts);
+      const cwd=list[0].cwd||"";
+      const g=document.createElement("div");g.className="sgroup"+(gi>0?" collapsed":"");
+      const head=document.createElement("div");head.className="ghead";
+      head.innerHTML=`<span class="arr">▾</span><span class="gname" title="${escapeHtml(cwd)}">${escapeHtml(label)}</span><span class="gcount">${list.length}</span>`;
+      head.onclick=()=>g.classList.toggle("collapsed");
+      g.appendChild(head);
+      const body=document.createElement("div");body.className="gbody";
+      list.forEach(s=>{
+        const el=document.createElement("div");
+        el.className="sitem"+(s.pinned?" pin":"")+(s.archived?" arch":"");el.dataset.id=s.id;
+        const dt=new Date(s.ts*1000).toLocaleString("zh-TW",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+        const label=s.title||s.first||"(無標題)";
+        el.title=`${dt} · ${s.id.slice(0,8)}\n${s.cwd||""}`;
+        el.innerHTML=`<span class="ico">${s.pinned?"●":"○"}</span><span class="lbl">${escapeHtml(label)}</span><span class="dots" title="更多">⋮</span>`;
+        el.onclick=(e)=>{if(e.target.classList.contains("dots")){e.stopPropagation();openMenu(e,engine,s);}else loadSession(engine,s,el);};
+        body.appendChild(el);
+      });
+      g.appendChild(body);
+      rails[engine].appendChild(g);
+    });
+  }catch(e){rails[engine].innerHTML="[載入失敗] "+e;}
+}
+
+async function loadSession(engine,s,el){
+  rails[engine].querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
+  el.classList.add("active");
+  tags[engine].textContent="載入中…";
+  const r=await fetch("/api/load",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({engine,id:s.id,cwd:s.cwd})});
+  const data=await r.json();
+  logs[engine].innerHTML="";
+  (data.transcript||[]).forEach(m=>{
+    add(engine,(m.role==="user"?"user":"bot")+" old",m.role==="user"?"你(舊)":engine+"(舊)",m.text);
+  });
+  add(engine,"divider","","── 以上為載入的歷史，以下接續 ──");
+  tags[engine].textContent="已接續 "+s.id.slice(0,6);
+}
+
+// ---- 每條對話的 ⋮ 選單 + 封存切換 ----
+const hiddenMode={claude:false,codex:false};
+async function patchSession(engine,id,patch){
+  await fetch("/api/session/patch",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({engine,id,patch})});
+}
+function closeMenu(){document.querySelectorAll(".ctxmenu").forEach(x=>x.remove());}
+function openMenu(e,engine,s){
+  closeMenu();
+  const m=document.createElement("div");m.className="ctxmenu";
+  const items=[];
+  items.push(["重新命名",async()=>{const t=prompt("新名稱：",s.title||s.first||"");
+    if(t!==null){await patchSession(engine,s.id,{title:t.trim()||null});loadRail(engine);}}]);
+  items.push([s.pinned?"取消置頂":"置頂",async()=>{await patchSession(engine,s.id,{pinned:!s.pinned});loadRail(engine);}]);
+  if(s.archived) items.push(["取消封存",async()=>{await patchSession(engine,s.id,{archived:null});loadRail(engine);}]);
+  else items.push(["封存",async()=>{await patchSession(engine,s.id,{archived:true});loadRail(engine);}]);
+  if(s.deleted) items.push(["還原",async()=>{await patchSession(engine,s.id,{deleted:null});loadRail(engine);}]);
+  else items.push(["從 duo 移除|danger",async()=>{if(confirm("從 duo 清單移除？\n(只影響 duo，不會刪掉官方 App 的對話)")){await patchSession(engine,s.id,{deleted:true});loadRail(engine);}}]);
+  items.forEach(([label,fn])=>{const it=document.createElement("div");
+    const dg=label.endsWith("|danger");it.className="ci"+(dg?" danger":"");
+    it.textContent=dg?label.replace("|danger",""):label;
+    it.onclick=async()=>{closeMenu();await fn();};m.appendChild(it);});
+  document.body.appendChild(m);
+  const r=e.target.getBoundingClientRect();
+  m.style.left=Math.min(r.left,window.innerWidth-170)+"px";
+  m.style.top=(r.bottom+4)+"px";
+  setTimeout(()=>document.addEventListener("click",closeMenu,{once:true}),0);
+}
+document.querySelectorAll(".rf").forEach(b=>b.onclick=()=>loadRail(b.dataset.e));
+document.querySelectorAll(".hidtog").forEach(b=>b.onclick=()=>{
+  const e=b.dataset.e;hiddenMode[e]=!hiddenMode[e];b.classList.toggle("on",hiddenMode[e]);loadRail(e);});
+loadRail("claude");loadRail("codex");
+</script>
+</body>
+</html>

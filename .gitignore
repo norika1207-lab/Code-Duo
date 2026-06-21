@@ -1,0 +1,13 @@
+# 個人 session 覆寫(含本機對話 id)，不上傳
+duo_overrides.json
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# 執行期暫存
+/tmp/
+*.log
