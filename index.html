@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,31 +8,14 @@
 <style>
   :root{
     --bg:#0e0f13; --panel:#16181f; --rail:#121419; --line:#252834; --txt:#e6e8ee; --dim:#8b90a0;
-    --claude:#d97757; --codex:#10a37f; --user:#5b8def;
+    --claude:#d97757; --codex:#5b8def; --both:#10a37f; --user:#5b8def;
   }
   *{box-sizing:border-box}
   html,body{width:100%;overflow-x:hidden}
   body{margin:0;height:100vh;width:100vw;overflow:hidden;display:flex;flex-direction:column;
-       background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,"PingFang TC",system-ui,sans-serif}
+       background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,system-ui,"Segoe UI",sans-serif}
   header{display:flex;align-items:center;gap:12px;padding:3px 14px;border-bottom:1px solid var(--line)}
   button.mini{padding:3px 9px;font-size:11px;border-radius:6px}
-  /* 每欄底部控制條:model / mode / effort / 用量(仿 Claude Code 底部) */
-  .cfgbar{display:flex;align-items:center;gap:7px;padding:4px 12px;border-top:1px solid var(--line);
-          background:#101218;flex:none;flex-wrap:wrap}
-  .cfgbar .tag{font-size:11px;color:var(--dim);flex:none}
-  /* 頂部角落的「新聊天」文字連結(非按鈕):Claude 左上、Codex 右上 */
-  .newlink{width:230px;flex:none;padding:0 14px;font-size:12px;font-weight:600;cursor:pointer;
-           display:flex;align-items:center;gap:5px;white-space:nowrap;user-select:none}
-  .newlink.cl{color:var(--claude);justify-content:flex-start}
-  .newlink.cx{color:var(--codex);justify-content:flex-end}
-  .newlink:hover{filter:brightness(1.35);text-decoration:underline}
-  .cfgbar select{background:#1a1d26;color:var(--txt);border:1px solid var(--line);border-radius:6px;
-                 padding:3px 6px;font-size:11px;cursor:pointer;max-width:120px}
-  .cfgbar select:hover{border-color:#3a3f50}
-  .cfgbar .fastbtn{padding:3px 9px;font-size:11px;border-radius:6px;background:#1a1d26;
-                   border:1px solid var(--line);color:var(--dim);cursor:pointer}
-  .cfgbar .fastbtn.on{background:#3a2d10;border-color:#caa23a;color:#ffd970}
-  .cfgbar .usechip{margin-left:auto;font-size:11px;color:var(--dim)}
   .brand{display:flex;align-items:center;gap:8px}
   .brand .mark{display:block;flex:none}
   header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
@@ -42,20 +25,29 @@
           border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
   button:hover{border-color:#3a3f50}
 
-  /* 頂部兩列面板(Token / 照妖鏡),stitch 卡片風 */
+  /* per-column bottom control bar: model / mode / effort / usage */
+  .cfgbar{display:flex;align-items:center;gap:7px;padding:4px 12px;border-top:1px solid var(--line);
+          background:#101218;flex:none;flex-wrap:wrap}
+  .cfgbar .tag{font-size:11px;color:var(--dim);flex:none}
+  .cfgbar select{background:#1a1d26;color:var(--txt);border:1px solid var(--line);border-radius:6px;
+                 padding:3px 6px;font-size:11px;cursor:pointer;max-width:128px}
+  .cfgbar select:hover{border-color:#3a3f50}
+  .cfgbar .fastbtn{padding:3px 9px;font-size:11px;border-radius:6px;background:#1a1d26;
+                   border:1px solid var(--line);color:var(--dim);cursor:pointer}
+  .cfgbar .fastbtn.on{background:#3a2d10;border-color:#caa23a;color:#ffd970}
+  .cfgbar .usechip{margin-left:auto;font-size:11px;color:var(--dim)}
+
+  /* top panels: token usage + watchdog */
   .panels{padding:4px 0;display:flex;flex-direction:column;gap:4px;
           background:#101218;border-bottom:1px solid var(--line)}
   .prow{display:flex;align-items:center;min-height:26px}
-  .plabel{font-size:10px;letter-spacing:1.2px;color:var(--dim);width:230px;flex:none;font-weight:700;
-          padding:0 14px}
-  .pright{width:230px;flex:none}
+  .plabel,.pright{width:230px;flex:none}
   .tcards{display:flex;gap:10px;flex:1;min-width:0}
   .tcard{flex:1;min-width:0;display:flex;align-items:center;gap:14px;
          background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px 20px}
-  .tcard .vn{flex:none}
+  .tcard .vn{flex:none;font-size:12px;font-weight:700}
   .kgroup{flex:1;display:flex;align-items:center;justify-content:space-evenly;gap:10px;min-width:0}
   .tcard .clearbtn{flex:none}
-  .tcard .vn{font-size:12px;font-weight:700}
   .tcard.claude .vn{color:var(--claude)} .tcard.codex .vn{color:var(--codex)}
   .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
   .tcard .kpi b{font-size:13px;font-weight:700}
@@ -74,13 +66,20 @@
   @keyframes circlepulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5)}50%{box-shadow:0 0 0 5px rgba(192,57,43,0)}}
   .stage{flex:1;display:flex;gap:1px;overflow:hidden}
 
-  /* 兩側歷史側欄 */
+  /* side history rails */
   .rail{width:230px;flex:none;background:var(--rail);display:flex;flex-direction:column;overflow:hidden}
-  .rail .rhead{padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line);
+  .rail .newlink{padding:9px 14px 5px;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;
+                 align-items:center;gap:5px;white-space:nowrap;user-select:none}
+  .rail.claude .newlink{justify-content:flex-start;color:var(--claude)}
+  .rail.codex .newlink{justify-content:flex-end;color:var(--codex)}
+  .rail .newlink:hover{filter:brightness(1.35);text-decoration:underline}
+  .rail .rhead{padding:7px 12px;font-size:12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
                display:flex;align-items:center;gap:6px;color:var(--dim)}
   .rail .rhead .d{width:8px;height:8px;border-radius:50%}
   .rail.claude .rhead .d{background:var(--claude)} .rail.codex .rhead .d{background:var(--codex)}
-  .rail .rhead .rf{margin-left:auto;cursor:pointer}
+  .rail .rhead .rf{cursor:pointer}
+  .rhead .hidtog{cursor:pointer;font-size:11px}
+  .rhead .hidtog.on{color:var(--user)}
   .rlist{flex:1;overflow-y:auto;padding:6px}
   .ghead{display:flex;align-items:center;gap:5px;padding:6px 7px;margin-top:4px;cursor:pointer;
          font-size:11px;color:#aab;border-radius:6px;position:sticky;top:0;background:var(--rail)}
@@ -103,23 +102,15 @@
   .sitem.pin .ico{color:var(--user)}
   .sitem.arch{opacity:.5}
   .ctxmenu{position:fixed;z-index:50;background:#1c1f28;border:1px solid var(--line);border-radius:8px;
-           padding:4px;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+           padding:4px;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
   .ctxmenu .ci{padding:7px 12px;border-radius:6px;cursor:pointer;font-size:13px}
   .ctxmenu .ci:hover{background:#2a3142}
   .ctxmenu .ci.danger{color:#e06}
-  .rhead .hidtog{cursor:pointer;font-size:11px}
-  .rhead .hidtog.on{color:var(--user)}
-  .sitem .cwd{font-size:9px;color:#646a80;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  /* 中間兩個對話框 */
+  /* middle: the two conversation columns */
   .col{flex:1;display:flex;flex-direction:column;background:var(--panel);overflow:hidden;min-width:0}
-  .col h2{margin:0;padding:5px 14px;font-size:13px;border-bottom:1px solid var(--line);
-          display:flex;align-items:center;gap:8px}
-  .dot{width:9px;height:9px;border-radius:50%}
-  .col.claude .dot{background:var(--claude)} .col.codex .dot{background:var(--codex)}
-  .col h2 .tag{color:var(--dim);font-weight:400;font-size:11px;margin-left:auto}
   .log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
-  /* 流動文字排版(仿 Claude Code transcript),非泡泡方塊 */
+  /* flowing transcript text (Claude-Code style), not chat bubbles */
   .msg{max-width:100%;padding:4px 2px;word-break:break-word}
   .msg.user{border-left:2px solid var(--user);padding-left:10px;margin-top:6px}
   .msg.user .mdl{color:#cfe0ff}
@@ -154,7 +145,7 @@
   .tgtprefix{display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;flex:none;
              border:1px solid var(--line);border-right:none;border-radius:10px 0 0 10px;
              background:#11141b;cursor:pointer;white-space:nowrap;user-select:none}
-  .tgtprefix.claude{color:var(--claude)} .tgtprefix.codex{color:var(--codex)} .tgtprefix.both{color:var(--user)}
+  .tgtprefix.claude{color:var(--claude)} .tgtprefix.codex{color:var(--codex)} .tgtprefix.both{color:var(--both)}
   textarea{flex:1;resize:none;background:var(--bg);color:var(--txt);border:1px solid var(--line);
            border-radius:0 10px 10px 0;padding:9px 44px 9px 12px;font:14px/1.4 inherit;height:40px;min-height:40px;max-height:160px}
   .sendico{position:absolute;right:6px;bottom:6px;width:28px;height:28px;padding:0;border-radius:7px;
@@ -165,11 +156,11 @@
         background:var(--panel);border:1px solid var(--line);border-radius:8px;cursor:pointer}
   .plus:hover{border-color:var(--user);color:#fff}
   .inputwrap.drag textarea{border-color:var(--user);background:#16203a}
-  .inputwrap.drag::after{content:"放開以加入檔案 ⤵";position:absolute;inset:0;display:flex;
+  .inputwrap.drag::after{content:"Drop to add files ⤵";position:absolute;inset:0;display:flex;
     align-items:center;justify-content:center;color:var(--user);font-size:12px;
     pointer-events:none;background:rgba(91,141,239,.08);border-radius:10px}
   .popmenu{position:fixed;z-index:60;background:#1c1f28;border:1px solid var(--line);border-radius:10px;
-           padding:5px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.55)}
+           padding:5px;min-width:220px;max-height:360px;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.55)}
   .popmenu .pmhead{padding:5px 10px;font-size:11px;color:var(--dim);display:flex;align-items:center;gap:6px;
                    border-bottom:1px solid var(--line);margin-bottom:4px}
   .popmenu .pmi{padding:7px 10px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:9px;
@@ -177,7 +168,6 @@
   .popmenu .pmi:hover{background:#2a3142}
   .popmenu .ic{color:var(--dim);flex:none;width:15px;text-align:center}
   .popmenu .pmi.cl .ic{color:var(--claude)} .popmenu .pmi.cx .ic{color:var(--codex)}
-  .hint{color:var(--dim);font-size:11px;padding:0 14px 8px}
 </style>
 </head>
 <body>
@@ -186,60 +176,54 @@
       <svg class="mark" width="20" height="20" viewBox="0 0 120 120">
         <rect x="6" y="6" width="108" height="108" rx="26" fill="#16181f" stroke="#2a2f40" stroke-width="2"/>
         <path d="M47 38 L26 60 L47 82" fill="none" stroke="#d97757" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M73 38 L94 60 L73 82" fill="none" stroke="#10a37f" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-        <line x1="60" y1="34" x2="60" y2="86" stroke="#5b8def" stroke-width="6" stroke-linecap="round"/>
+        <path d="M73 38 L94 60 L73 82" fill="none" stroke="#5b8def" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="60" y1="34" x2="60" y2="86" stroke="#10a37f" stroke-width="6" stroke-linecap="round"/>
       </svg>
       <h1>Code&nbsp;Duo</h1>
     </span>
-    <span class="sub">Claude × Codex · 同窗協作 · 走訂閱不走 API</span>
+    <span class="sub">Claude × Codex · one window · subscription, no API</span>
     <div class="right">
-      <span id="projlabel" class="projlabel" title="兩個 agent 共用的專案目錄">專案: 未設定</span>
-      <button id="setproj" class="mini">設定專案</button>
-      <button id="reset" class="mini">清空對話</button>
+      <span id="projlabel" class="projlabel" title="Shared project directory for both agents">Project: none</span>
+      <button id="setproj" class="mini">Set project</button>
+      <button id="reset" class="mini">Clear chat</button>
     </div>
   </header>
 
   <div class="panels">
-    <div class="prow">
-      <a class="newlink cl" data-e="claude" title="開新對話(重置 session)">＋ 新聊天</a>
-      <div class="bstrip" id="bstrip">—</div>
-      <a class="newlink cx" data-e="codex" title="開新對話(重置 session)">＋ 新聊天</a>
-    </div>
-    <div class="prow"><span class="plabel"></span><div class="tcards" id="tcards">載入中…</div><div class="pright"></div></div>
+    <div class="prow"><span class="plabel"></span><div class="bstrip" id="bstrip">—</div><div class="pright"></div></div>
+    <div class="prow"><span class="plabel"></span><div class="tcards" id="tcards">Loading…</div><div class="pright"></div></div>
   </div>
 
   <div class="stage">
-    <!-- 最左：Claude 歷史 -->
+    <!-- far left: Claude history -->
     <div class="rail claude">
-      <div class="rhead"><span class="d"></span>Claude 歷史<span class="hidtog" data-e="claude" title="顯示/隱藏封存">封存</span><span class="rf" data-e="claude" title="重新整理">⟳</span></div>
-      <div class="rlist" id="rail-claude">載入中…</div>
+      <a class="newlink cl" data-e="claude" title="Start a new conversation (reset session)">+ New chat</a>
+      <div class="rhead"><span class="d"></span>Claude history<span class="hidtog" data-e="claude" title="Show/hide archived">Archived</span><span class="rf" data-e="claude" title="Refresh">⟳</span></div>
+      <div class="rlist" id="rail-claude">Loading…</div>
     </div>
 
-    <!-- 中左：Claude 對話 -->
+    <!-- center left: Claude conversation -->
     <div class="col claude">
       <div class="log" id="log-claude"></div>
-      <div class="cfgbar" data-e="claude">
-        <span class="tag" id="t-claude">idle</span>
-      </div>
+      <div class="cfgbar" data-e="claude"><span class="tag" id="t-claude">idle</span></div>
     </div>
 
-    <!-- 中右：Codex 對話 -->
+    <!-- center right: Codex conversation -->
     <div class="col codex">
       <div class="log" id="log-codex"></div>
-      <div class="cfgbar" data-e="codex">
-        <span class="tag" id="t-codex">idle</span>
-      </div>
+      <div class="cfgbar" data-e="codex"><span class="tag" id="t-codex">idle</span></div>
     </div>
 
-    <!-- 最右：Codex 歷史 -->
+    <!-- far right: Codex history -->
     <div class="rail codex">
-      <div class="rhead"><span class="d"></span>Codex 歷史<span class="hidtog" data-e="codex" title="顯示/隱藏封存">封存</span><span class="rf" data-e="codex" title="重新整理">⟳</span></div>
-      <div class="rlist" id="rail-codex">載入中…</div>
+      <a class="newlink cx" data-e="codex" title="Start a new conversation (reset session)">+ New chat</a>
+      <div class="rhead"><span class="d"></span>Codex history<span class="hidtog" data-e="codex" title="Show/hide archived">Archived</span><span class="rf" data-e="codex" title="Refresh">⟳</span></div>
+      <div class="rlist" id="rail-codex">Loading…</div>
     </div>
   </div>
 
   <footer>
-    <button class="plus" id="plusbtn" title="加入檔案(上傳/拖曳/瀏覽專案)">+</button>
+    <button class="plus" id="plusbtn" title="Add files (upload / drag / browse project)">+</button>
     <input type="file" id="fileinput" multiple hidden>
     <div class="targets">
       <button data-t="claude">Claude</button>
@@ -247,9 +231,9 @@
       <button data-t="both" class="on">Both</button>
     </div>
     <div class="inputwrap">
-      <span class="tgtprefix both" id="tgtprefix" title="按 Tab 切換對象">Both：</span>
-      <textarea id="box" placeholder="按 Tab 切換 Claude / Codex / Both…"></textarea>
-      <button class="sendico" id="send" title="送出 (Enter)">↵</button>
+      <span class="tgtprefix both" id="tgtprefix" title="Press Tab to switch target">Both:</span>
+      <textarea id="box" placeholder="Press Tab to switch Claude / Codex / Both…"></textarea>
+      <button class="sendico" id="send" title="Send (Enter)">↵</button>
     </div>
   </footer>
 
@@ -266,13 +250,13 @@ function setTarget(t){
   target=t;
   document.querySelectorAll(".targets button").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
   const pre=document.getElementById("tgtprefix");
-  pre.textContent=TGT_NAME[t]+"：";
+  pre.textContent=TGT_NAME[t]+":";
   pre.className="tgtprefix "+t;
 }
 document.querySelectorAll(".targets button").forEach(b=>b.onclick=()=>setTarget(b.dataset.t));
 document.getElementById("tgtprefix").onclick=()=>setTarget(TGT_ORDER[(TGT_ORDER.indexOf(target)+1)%3]);
 setTarget("both");
-// 全域攔截 Tab:不管焦點在哪都吃掉,只用來循環對象,絕不讓焦點亂跑
+// global Tab capture: cycle target regardless of focus, never let focus wander
 document.addEventListener("keydown",e=>{
   if(e.key==="Tab"){
     e.preventDefault();e.stopPropagation();
@@ -289,7 +273,7 @@ function add(col,cls,who,text){
   logs[col].appendChild(d);logs[col].scrollTop=logs[col].scrollHeight;return d;
 }
 function escapeHtml(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
-// 簡易 markdown -> HTML(先 escape,再套標題/清單/行內 code/程式碼塊),流動文字用
+// minimal markdown -> HTML (escape first, then headings/lists/inline code/code blocks)
 function md(raw){
   let s=escapeHtml(raw||"");
   const cb=[];
@@ -307,47 +291,47 @@ function md(raw){
   closeL();return html;
 }
 
-// bot 回應 + 交棒/審查按鈕(把這一則交給另一個 agent)
+// bot reply + hand-off / review actions (pass this message to the other agent)
 function renderBot(engine,res,label){
   const other=engine==="claude"?"codex":"claude";
   const oName=other.charAt(0).toUpperCase()+other.slice(1);
-  const txt=(res&&res.text)||"[空]";
+  const txt=(res&&res.text)||"[empty]";
   const d=document.createElement("div");d.className="msg bot";
   if(res&&!res.ok)d.style.borderColor="#a33";
   d.innerHTML=`<div class="who">${escapeHtml(label)}</div>${md(txt)}`
-    +`<div class="acts"><button class="act" data-a="handoff">→ ${oName} 接手</button>`
-    +`<button class="act" data-a="audit">→ ${oName} 審這則</button></div>`;
+    +`<div class="acts"><button class="act" data-a="handoff">→ Hand to ${oName}</button>`
+    +`<button class="act" data-a="audit">→ ${oName} review</button></div>`;
   d.querySelector('[data-a="handoff"]').onclick=()=>crossFeed(other,"handoff",txt);
   d.querySelector('[data-a="audit"]').onclick=()=>crossFeed(other,"audit",txt);
   logs[engine].appendChild(d);logs[engine].scrollTop=logs[engine].scrollHeight;return d;
 }
 
-// 把一段內容當作指令丟給某個 engine,結果渲染在它那欄
+// send some text to one engine, render the result in its column
 async function runOne(engine,text,sysNote){
   if(sysNote)add(engine,"sys","",sysNote);
-  tags[engine].textContent="思考中…";
-  const think=add(engine,"bot think","","▍ 思考中…");
+  tags[engine].textContent="thinking…";
+  const think=add(engine,"bot think","","▍ thinking…");
   try{
     const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({target:engine,text})});
     const data=await r.json();
     think.remove();tags[engine].textContent="idle";
     const res=data[engine];
-    if(!res){add(engine,"bot","系統","[沒回應] "+(data.error||""));return;}
+    if(!res){add(engine,"bot","System","[no response] "+(data.error||""));return;}
     renderBot(engine,res,engine+" · "+(res.ms/1000).toFixed(1)+"s");
-  }catch(e){think.remove();tags[engine].textContent="idle";add(engine,"bot","系統","[請求失敗] "+e);}
+  }catch(e){think.remove();tags[engine].textContent="idle";add(engine,"bot","System","[request failed] "+e);}
 }
 
-// 交叉餵送:把 srcText(另一邊的產出)組成 接手 或 審查 的 prompt
+// cross-feed: build a hand-off or review prompt from the other side's output
 function crossFeed(target,mode,srcText){
   const src=target==="claude"?"Codex":"Claude";
   let prompt,note;
   if(mode==="handoff"){
-    note=`↩ 接手 ${src} 上一則`;
-    prompt=`以下是 ${src} 對目前任務的處理。請你接手:先讀懂它做了什麼、判斷有沒有問題,再繼續把它做對。專案就在你的工作目錄,可直接讀檔確認。\n\n--- ${src} 的內容 ---\n${srcText}`;
+    note=`↩ Taking over ${src}'s last message`;
+    prompt=`Below is ${src}'s work on the current task. Take over: first understand what it did, judge whether there are issues, then continue and get it right. The project is your working directory; read the files to verify.\n\n--- ${src}'s output ---\n${srcText}`;
   }else{
-    note=`🔍 審查 ${src} 上一則`;
-    prompt=`請審查 ${src} 以下的處理:挑出錯誤、風險、遺漏或更好的做法,最後給明確結論(對 / 不對 / 有條件)。可直接讀專案檔案佐證。\n\n--- ${src} 的內容 ---\n${srcText}`;
+    note=`🔍 Reviewing ${src}'s last message`;
+    prompt=`Review ${src}'s work below: point out errors, risks, omissions or better approaches, then give a clear verdict (correct / wrong / conditional). You can read the project files as evidence.\n\n--- ${src}'s output ---\n${srcText}`;
   }
   runOne(target,prompt,note);
 }
@@ -359,9 +343,9 @@ async function send(){
   if(m){t=m[1].toLowerCase();text=text.slice(m[0].length);}
   box.value="";box.style.height="40px";
   const cols=t==="both"?["claude","codex"]:[t];
-  cols.forEach(c=>add(c,"user","你",text));
+  cols.forEach(c=>add(c,"user","You",text));
   const thinks={};
-  cols.forEach(c=>{tags[c].textContent="思考中…";thinks[c]=add(c,"bot think","","▍ 思考中…");});
+  cols.forEach(c=>{tags[c].textContent="thinking…";thinks[c]=add(c,"bot think","","▍ thinking…");});
   try{
     const r=await fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({target:t,text})});
@@ -369,14 +353,14 @@ async function send(){
     cols.forEach(c=>{
       thinks[c].remove();tags[c].textContent="idle";
       const res=data[c];
-      if(!res){add(c,"bot","系統","[沒回應] "+(data.error||""));return;}
+      if(!res){add(c,"bot","System","[no response] "+(data.error||""));return;}
       renderBot(c,res,c+" · "+(res.ms/1000).toFixed(1)+"s");
     });
-  }catch(e){cols.forEach(c=>{thinks[c].remove();tags[c].textContent="idle";add(c,"bot","系統","[請求失敗] "+e);});}
+  }catch(e){cols.forEach(c=>{thinks[c].remove();tags[c].textContent="idle";add(c,"bot","System","[request failed] "+e);});}
 }
 document.getElementById("send").onclick=send;
 box.addEventListener("keydown",e=>{
-  if(e.isComposing||e.keyCode===229) return;          // 中文選字中,Enter 只確認字不送出
+  if(e.isComposing||e.keyCode===229) return;          // while composing (IME), Enter only confirms
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}
 });
 box.addEventListener("input",()=>{box.style.height="40px";box.style.height=Math.min(box.scrollHeight,160)+"px";});
@@ -385,12 +369,12 @@ document.getElementById("reset").onclick=async()=>{
   document.querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
 };
 
-// ---- 共用專案目錄 ----
+// ---- shared project directory ----
 let curProject=null;
 const projlabel=document.getElementById("projlabel");
 function renderProj(){
-  projlabel.textContent="專案: "+(curProject?curProject.replace(/^.*\/([^/]+)\/?$/,"$1"):"未設定");
-  projlabel.title=curProject||"兩個 agent 共用的專案目錄";
+  projlabel.textContent="Project: "+(curProject?curProject.replace(/^.*\/([^/]+)\/?$/,"$1"):"none");
+  projlabel.title=curProject||"Shared project directory for both agents";
 }
 async function postProj(){
   const r=await fetch("/api/project",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -400,26 +384,26 @@ async function postProj(){
   curProject=d.project;renderProj();return true;
 }
 document.getElementById("setproj").onclick=async()=>{
-  const p=prompt("兩個 agent 一起工作的專案目錄(絕對路徑)：",curProject||"/Volumes/ADATA/dev/");
+  const p=prompt("Project directory both agents work in (absolute path):",curProject||"/Volumes/ADATA/dev/");
   if(p===null)return;
   const old=curProject;curProject=p.trim()||null;
   if(!await postProj()){curProject=old;}
   else{logs.claude.innerHTML="";logs.codex.innerHTML="";
-    add("claude","sys","",`已切到專案 ${curProject||"(無)"}`);add("codex","sys","",`已切到專案 ${curProject||"(無)"}`);}
+    add("claude","sys","",`Switched to project ${curProject||"(none)"}`);add("codex","sys","",`Switched to project ${curProject||"(none)"}`);}
 };
 (async()=>{try{const d=await(await fetch("/api/project")).json();curProject=d.project;renderProj();}catch(e){}})();
 
-// ---- 每欄底部:model / mode / effort 控制(接到引擎 CLI flag) ----
+// ---- per-column model / mode / effort controls (wired to CLI flags) ----
 const CFG_OPTS={
   claude:{
-    model:[["","模型·預設"],["opus","Opus 4.8"],["sonnet","Sonnet 4.6"],["haiku","Haiku 4.5"]],
+    model:[["","Model · default"],["opus","Opus 4.8"],["sonnet","Sonnet 4.6"],["haiku","Haiku 4.5"]],
     mode:[["default","Default"],["acceptEdits","Accept edits"],["plan","Plan"],["bypassPermissions","Bypass"]],
-    effort:[["","Effort·預設"],["low","Low"],["medium","Medium"],["high","High"],["extra","Extra"],["max","Max"],["ultracode","Ultracode"]]
+    effort:[["","Effort · default"],["low","Low"],["medium","Medium"],["high","High"],["extra","Extra"],["max","Max"],["ultracode","Ultracode"]]
   },
   codex:{
-    model:[["","模型·預設"],["gpt-5.5","GPT-5.5"],["gpt-5.4","GPT-5.4"],["gpt-5.4-mini","GPT-5.4-Mini"],["gpt-5.3-codex-spark","GPT-5.3-Codex-Spark"]],
-    mode:[["read-only","要求核准·唯讀"],["workspace-write","代我核准·可改檔"],["danger-full-access","完整存取權"]],
-    effort:[["","推理·預設"],["low","低"],["medium","中"],["high","高"],["xhigh","超高"]]
+    model:[["","Model · default"],["gpt-5.5","GPT-5.5"],["gpt-5.4","GPT-5.4"],["gpt-5.4-mini","GPT-5.4-Mini"],["gpt-5.3-codex-spark","GPT-5.3-Codex-Spark"]],
+    mode:[["read-only","Read-only"],["workspace-write","Workspace-write"],["danger-full-access","Full access"]],
+    effort:[["","Reasoning · default"],["low","Low"],["medium","Medium"],["high","High"],["xhigh","x-High"]]
   }
 };
 function buildSelect(engine,kind,cur){
@@ -438,7 +422,7 @@ function buildSelect(engine,kind,cur){
     ["model","mode","effort"].forEach(k=>bar.appendChild(buildSelect(e,k,(cfg[e]||{})[k]||"")));
     if(e==="claude"){
       const ft=document.createElement("button");ft.className="fastbtn";ft.textContent="⚡Fast";
-      ft.title="Fast mode(僅 Opus):更快輸出";
+      ft.title="Fast mode (Opus only): faster output";
       ft.classList.toggle("on",!!(cfg.claude&&cfg.claude.fast));
       ft.onclick=()=>{const now=!ft.classList.contains("on");ft.classList.toggle("on",now);
         fetch("/api/agent-config",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -448,15 +432,15 @@ function buildSelect(engine,kind,cur){
     const chip=document.createElement("span");chip.className="usechip";chip.id="use-"+e;bar.appendChild(chip);
   });
 })();
-// ＋新聊天:重置該 agent 的 session + 清空該欄畫面
+// + New chat: reset that agent's session + clear its column
 document.querySelectorAll(".newlink").forEach(b=>b.onclick=async()=>{
   const e=b.dataset.e;
   await fetch("/api/clear-context",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({engine:e})});
-  logs[e].innerHTML="";activeId[e]=null;tags[e].textContent="新對話";
+  logs[e].innerHTML="";activeId[e]=null;tags[e].textContent="new chat";
 });
 
-// ---- 兩側歷史側欄(定時自動同步,沒變不重畫) ----
+// ---- side history rails (auto-sync every second, no repaint if unchanged) ----
 const collapsedG={claude:new Set(),codex:new Set()};
 const activeId={claude:null,codex:null};
 const railSig={claude:null,codex:null};
@@ -466,10 +450,9 @@ async function loadRail(engine,force){
   let rows;
   try{
     const r=await fetch(`/api/sessions?engine=${engine}${hiddenMode[engine]?"&hidden=1":""}`);
-    if(!r.ok){if(!railInit[engine])rails[engine].innerHTML=`<div style='padding:10px;color:#e08;font-size:11px'>[HTTP ${r.status}] 請用 http://localhost:8765 開,不是預覽面板</div>`;return;}
+    if(!r.ok){if(!railInit[engine])rails[engine].innerHTML=`<div style='padding:10px;color:#e08;font-size:11px'>[HTTP ${r.status}] open http://localhost:8765, not the preview panel</div>`;return;}
     rows=await r.json();
-  }catch(e){if(!railInit[engine])rails[engine].innerHTML="[載入失敗] "+e;return;}
-  // 簽章比對:資料沒變就不重畫,避免閃爍跟打斷你正在操作
+  }catch(e){if(!railInit[engine])rails[engine].innerHTML="[load failed] "+e;return;}
   const sig=JSON.stringify(rows.map(s=>[s.id,s.title||s.first,s.ts,!!s.pinned,!!s.archived,s.project]));
   if(!force && sig===railSig[engine]) return;
   railSig[engine]=sig;
@@ -478,12 +461,12 @@ async function loadRail(engine,force){
 
 function renderRail(engine,rows){
   const scroll=rails[engine].scrollTop;
-  if(!rows.length){rails[engine].innerHTML="<div style='padding:10px;color:#646a80'>（無 session）</div>";railInit[engine]=true;return;}
+  if(!rows.length){rails[engine].innerHTML="<div style='padding:10px;color:#646a80'>(no sessions)</div>";railInit[engine]=true;return;}
   const groups={};
-  rows.forEach(s=>{(groups[s.project||s.cwd||"(未知)"] ||= []).push(s);});
+  rows.forEach(s=>{(groups[s.project||s.cwd||"(unknown)"] ||= []).push(s);});
   const order=Object.keys(groups).sort((a,b)=>
     Math.max(...groups[b].map(x=>x.ts))-Math.max(...groups[a].map(x=>x.ts)));
-  if(!railInit[engine]) order.forEach((label,gi)=>{if(gi>0)collapsedG[engine].add(label);});  // 首次:只展開最近一組
+  if(!railInit[engine]) order.forEach((label,gi)=>{if(gi>0)collapsedG[engine].add(label);});  // first paint: expand only the most recent group
   rails[engine].innerHTML="";
   order.forEach((label)=>{
     const list=groups[label].sort((a,b)=>b.ts-a.ts);
@@ -499,10 +482,10 @@ function renderRail(engine,rows){
       const el=document.createElement("div");
       el.className="sitem"+(s.pinned?" pin":"")+(s.archived?" arch":"")+(s.id===activeId[engine]?" active":"");
       el.dataset.id=s.id;
-      const dt=new Date(s.ts*1000).toLocaleString("zh-TW",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-      const lab=s.title||s.first||"(無標題)";
+      const dt=new Date(s.ts*1000).toLocaleString("en-US",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+      const lab=s.title||s.first||"(untitled)";
       el.title=`${dt} · ${s.id.slice(0,8)}\n${s.cwd||""}`;
-      el.innerHTML=`<span class="ico">${s.pinned?"●":"○"}</span><span class="lbl">${escapeHtml(lab)}</span><span class="dots" title="更多">⋮</span>`;
+      el.innerHTML=`<span class="ico">${s.pinned?"●":"○"}</span><span class="lbl">${escapeHtml(lab)}</span><span class="dots" title="more">⋮</span>`;
       el.onclick=(e)=>{if(e.target.classList.contains("dots")){e.stopPropagation();openMenu(e,engine,s);}else loadSession(engine,s,el);};
       body.appendChild(el);
     });
@@ -517,19 +500,19 @@ async function loadSession(engine,s,el){
   activeId[engine]=s.id;
   rails[engine].querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
   el.classList.add("active");
-  tags[engine].textContent="載入中…";
+  tags[engine].textContent="loading…";
   const r=await fetch("/api/load",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({engine,id:s.id,cwd:s.cwd})});
   const data=await r.json();
   logs[engine].innerHTML="";
   (data.transcript||[]).forEach(m=>{
-    add(engine,(m.role==="user"?"user":"bot")+" old",m.role==="user"?"你(舊)":engine+"(舊)",m.text);
+    add(engine,(m.role==="user"?"user":"bot")+" old",m.role==="user"?"You (old)":engine+" (old)",m.text);
   });
-  add(engine,"divider","","── 以上為載入的歷史，以下接續 ──");
-  tags[engine].textContent="已接續 "+s.id.slice(0,6);
+  add(engine,"divider","","── history above · continuing below ──");
+  tags[engine].textContent="resumed "+s.id.slice(0,6);
 }
 
-// ---- 每條對話的 ⋮ 選單 + 封存切換 ----
+// ---- per-session ⋮ menu + archived toggle ----
 const hiddenMode={claude:false,codex:false};
 async function patchSession(engine,id,patch){
   await fetch("/api/session/patch",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -540,20 +523,20 @@ function openMenu(e,engine,s){
   closeMenu();
   const m=document.createElement("div");m.className="ctxmenu";
   const items=[];
-  items.push(["重新命名",async()=>{const t=prompt("新名稱：",s.title||s.first||"");
+  items.push(["Rename",async()=>{const t=prompt("New name:",s.title||s.first||"");
     if(t!==null){await patchSession(engine,s.id,{title:t.trim()||null});loadRail(engine);}}]);
-  items.push([s.pinned?"取消置頂":"置頂",async()=>{await patchSession(engine,s.id,{pinned:!s.pinned});loadRail(engine);}]);
-  if(s.archived) items.push(["取消封存",async()=>{await patchSession(engine,s.id,{archived:null});loadRail(engine);}]);
-  else items.push(["封存",async()=>{await patchSession(engine,s.id,{archived:true});loadRail(engine);}]);
-  if(s.deleted) items.push(["還原",async()=>{await patchSession(engine,s.id,{deleted:null});loadRail(engine);}]);
-  else items.push(["從 duo 移除|danger",async()=>{if(confirm("從 duo 清單移除？\n(只影響 duo，不會刪掉官方 App 的對話)")){await patchSession(engine,s.id,{deleted:true});loadRail(engine);}}]);
+  items.push([s.pinned?"Unpin":"Pin",async()=>{await patchSession(engine,s.id,{pinned:!s.pinned});loadRail(engine);}]);
+  if(s.archived) items.push(["Unarchive",async()=>{await patchSession(engine,s.id,{archived:null});loadRail(engine);}]);
+  else items.push(["Archive",async()=>{await patchSession(engine,s.id,{archived:true});loadRail(engine);}]);
+  if(s.deleted) items.push(["Restore",async()=>{await patchSession(engine,s.id,{deleted:null});loadRail(engine);}]);
+  else items.push(["Remove from Duo|danger",async()=>{if(confirm("Remove from the Duo list?\n(Only affects Duo; the conversation in the official app is not deleted.)")){await patchSession(engine,s.id,{deleted:true});loadRail(engine);}}]);
   items.forEach(([label,fn])=>{const it=document.createElement("div");
     const dg=label.endsWith("|danger");it.className="ci"+(dg?" danger":"");
     it.textContent=dg?label.replace("|danger",""):label;
     it.onclick=async()=>{closeMenu();await fn();};m.appendChild(it);});
   document.body.appendChild(m);
   const r=e.target.getBoundingClientRect();
-  m.style.left=Math.min(r.left,window.innerWidth-170)+"px";
+  m.style.left=Math.min(r.left,window.innerWidth-180)+"px";
   m.style.top=(r.bottom+4)+"px";
   setTimeout(()=>document.addEventListener("click",closeMenu,{once:true}),0);
 }
@@ -561,10 +544,10 @@ document.querySelectorAll(".rf").forEach(b=>b.onclick=()=>loadRail(b.dataset.e,t
 document.querySelectorAll(".hidtog").forEach(b=>b.onclick=()=>{
   const e=b.dataset.e;hiddenMode[e]=!hiddenMode[e];b.classList.toggle("on",hiddenMode[e]);railSig[e]=null;loadRail(e,true);});
 loadRail("claude",true);loadRail("codex",true);
-// 定時自動同步:每 1 秒抓一次,兩邊幾乎即時一致(沒變不重畫,所以高頻也不閃)
+// auto-sync once a second; no repaint when nothing changed, so high frequency doesn't flicker
 setInterval(()=>{loadRail("claude");loadRail("codex");},1000);
 
-// ---- 頂部面板:Token 用量 + 照妖鏡 ----
+// ---- top panels: token usage + watchdog ----
 function fmtTok(n){return n>=1e9?(n/1e9).toFixed(1)+"B":n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(0)+"K":""+n;}
 async function refreshTokens(){
   try{
@@ -573,24 +556,24 @@ async function refreshTokens(){
       const a=d[v];
       return `<div class="tcard ${v}"><span class="vn">${v==="claude"?"Claude":"Codex"}</span>
         <div class="kgroup">
-          <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>成本</span></div>
+          <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>cost</span></div>
           <div class="kpi"><b>${fmtTok(a.total_tokens)}</b><span>tokens</span></div>
-          <div class="kpi"><b>${a.cache_pct}%</b><span>快取命中</span></div>
+          <div class="kpi"><b>${a.cache_pct}%</b><span>cache hit</span></div>
           <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div>
         </div>
-        <button class="clearbtn" data-v="${v}" title="清空 ${v} 上下文:下一則用新 session 開始,不再背舊上下文重複 cache(省 token)">清空 cache</button></div>`;
+        <button class="clearbtn" data-v="${v}" title="Clear ${v} context: next message starts a fresh session and stops re-caching the old context (saves tokens)">Clear cache</button></div>`;
     }).join("");
     document.querySelectorAll(".clearbtn").forEach(b=>b.onclick=()=>clearContext(b.dataset.v));
     ["claude","codex"].forEach(v=>{const c=document.getElementById("use-"+v);
-      if(c&&d[v])c.textContent=`$${d[v].cost.toFixed(2)} · 快取 ${d[v].cache_pct}%`;});
+      if(c&&d[v])c.textContent=`$${d[v].cost.toFixed(2)} · cache ${d[v].cache_pct}%`;});
   }catch(e){}
 }
 async function clearContext(engine){
-  if(!confirm(`清空 ${engine} 的對話上下文?\n下一則訊息會用全新 session 開始,不再背著舊的快取上下文(省 token)。\n歷史 session 不會被刪除。`))return;
+  if(!confirm(`Clear ${engine}'s conversation context?\nThe next message starts a brand-new session and no longer carries the cached context (saves tokens).\nHistory sessions are not deleted.`))return;
   await fetch("/api/clear-context",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({engine})});
   activeId[engine]=null;
-  add(engine,"sys","",`🧹 已清空 ${engine} 上下文,下一則從新 session 開始`);
+  add(engine,"sys","",`🧹 Cleared ${engine} context; the next message starts a fresh session`);
 }
 async function refreshBehavior(){
   try{
@@ -598,21 +581,20 @@ async function refreshBehavior(){
     const arr=data.records||[],streak=data.streak||{};
     const el=document.getElementById("bstrip");
     if(!arr.length&&!Object.values(streak).some(v=>v>=3)){
-      el.innerHTML='<span class="bnote">設定專案 + 把 agent 的 mode 設成可寫(Accept edits / Workspace-write),每輪比對 AI 嘴上宣稱 vs 磁碟實際變動</span>';return;}
+      el.innerHTML='<span class="bnote">Set a project + an agent mode that can write (Accept edits / Workspace-write): each turn compares what the AI claims vs. what actually changed on disk</span>';return;}
     let h="";
-    // 鬼打牆:當前 streak 真值(連續宣稱卻 0 變動)
     Object.keys(streak).forEach(e=>{
-      if(streak[e]>=3)h+=`<span class="bpill circle" title="連續 ${streak[e]} 輪宣稱進度但磁碟 0 變動,建議清空 cache 或換手">🌀 ${e} 鬼打牆 ${streak[e]} 輪</span>`;
+      if(streak[e]>=3)h+=`<span class="bpill circle" title="${streak[e]} turns in a row claiming progress with 0 disk changes; try Clear cache or hand off">🌀 ${e} looping ${streak[e]}×</span>`;
     });
     const warns=arr.filter(r=>r.verdict==="warn"&&!r.circling);
     const okc=arr.filter(r=>r.verdict==="ok").length;
-    h+=`<span class="bpill ok">✓ ${okc} 則言行一致</span>`;
+    h+=`<span class="bpill ok">✓ ${okc} consistent</span>`;
     if(warns.length){
-      h+=`<span class="bpill warn">⚠ ${warns.length} 則可疑</span>`;
+      h+=`<span class="bpill warn">⚠ ${warns.length} suspicious</span>`;
       warns.slice(0,2).forEach(r=>{
         let detail=r.reason||"";
-        const miss=r.claims.filter(c=>c.status==="missing"||c.status==="empty").map(c=>c.path).join("、");
-        if(miss)detail+="："+miss;
+        const miss=r.claims.filter(c=>c.status==="missing"||c.status==="empty").map(c=>c.path).join(", ");
+        if(miss)detail+=": "+miss;
         h+=`<span class="bpill warn" title="${escapeHtml(r.engine+" · "+detail)}">${r.engine}: ${escapeHtml(detail).slice(0,48)}</span>`;
       });
     }
@@ -622,7 +604,7 @@ async function refreshBehavior(){
 setInterval(refreshTokens,15000);refreshTokens();
 setInterval(refreshBehavior,2000);refreshBehavior();
 
-// ---- 輸入列左邊的「+」:依 Tab 對應 agent、加入專案檔案/資料夾 ----
+// ---- the "+" left of the input: per-target file add (upload / drag / browse project) ----
 const plusbtn=document.getElementById("plusbtn");
 function closePop(){document.querySelectorAll(".popmenu").forEach(x=>x.remove());
   document.removeEventListener("mousedown",docClose,true);}
@@ -640,14 +622,14 @@ function insertRef(engine,rel){
 async function openFileBrowser(engine,rel){
   closePop();
   const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
-  m.innerHTML='<div class="pmhead">載入中…</div>';placePop(m);
+  m.innerHTML='<div class="pmhead">Loading…</div>';placePop(m);
   let data={};try{data=await(await fetch("/api/files?dir="+encodeURIComponent(rel||""))).json();}catch(e){}
   m.innerHTML="";
   const head=document.createElement("div");head.className="pmhead";
-  head.innerHTML=`<span class="ic">${engine==="claude"?"⚡":"⚡"}</span>${engine==="claude"?"Claude":"Codex"} 加入  ·  /${escapeHtml(data.rel||"")}`;
+  head.innerHTML=`<span class="ic">⚡</span>${engine==="claude"?"Claude":"Codex"} · add · /${escapeHtml(data.rel||"")}`;
   m.appendChild(head);
   if(data.rel){
-    const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">↑</span>上一層';
+    const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">↑</span>Up';
     up.onclick=()=>openFileBrowser(engine,data.rel.split("/").slice(0,-1).join("/"));m.appendChild(up);
   }
   (data.entries||[]).forEach(en=>{
@@ -658,13 +640,13 @@ async function openFileBrowser(engine,rel){
     m.appendChild(it);
   });
   if(!(data.entries||[]).length){const e=document.createElement("div");e.className="pmhead";
-    e.textContent=data.base?"(此層沒有可加入的檔案)":"(請先設定專案目錄)";m.appendChild(e);}
+    e.textContent=data.base?"(no files here)":"(set a project directory first)";m.appendChild(e);}
   placePop(m);
 }
 function chooseAgentThen(cb){
   closePop();
   const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
-  m.innerHTML='<div class="pmhead">+ 加入到哪個</div>';
+  m.innerHTML='<div class="pmhead">Add to which</div>';
   [["claude","Claude","cl"],["codex","Codex","cx"]].forEach(([e,label,cls])=>{
     const it=document.createElement("div");it.className="pmi "+cls;
     it.innerHTML=`<span class="ic">⚡</span>${label}`;it.onclick=()=>cb(e);m.appendChild(it);
@@ -674,10 +656,10 @@ function chooseAgentThen(cb){
 function showPlusMenu(engine){
   closePop();
   const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
-  m.innerHTML=`<div class="pmhead"><span class="ic">⚡</span>${engine==="claude"?"Claude":"Codex"} 加入檔案</div>`;
-  const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">📤</span>上傳電腦檔案…';
+  m.innerHTML=`<div class="pmhead"><span class="ic">⚡</span>${engine==="claude"?"Claude":"Codex"} · add files</div>`;
+  const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">📤</span>Upload from computer…';
   up.onclick=()=>{closePop();pickFiles(engine);};m.appendChild(up);
-  const br=document.createElement("div");br.className="pmi";br.innerHTML='<span class="ic">📁</span>瀏覽專案檔';
+  const br=document.createElement("div");br.className="pmi";br.innerHTML='<span class="ic">📁</span>Browse project files';
   br.onclick=()=>openFileBrowser(engine,"");m.appendChild(br);
   placePop(m);
 }
@@ -687,7 +669,7 @@ plusbtn.onclick=()=>{
   else showPlusMenu(target);
 };
 
-// ---- 選檔上傳 + 拖曳上傳 ----
+// ---- file upload (picker + drag-drop) ----
 const fileinput=document.getElementById("fileinput");
 let pendingEngine="claude";
 function pickFiles(engine){pendingEngine=engine;fileinput.value="";fileinput.click();}
@@ -697,8 +679,8 @@ async function uploadFile(engine,file){
     const buf=await file.arrayBuffer();
     const r=await fetch("/api/upload",{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:buf});
     const d=await r.json();
-    if(d.ok)insertRef(engine,d.rel); else alert("上傳失敗: "+(d.error||""));
-  }catch(e){alert("上傳失敗: "+e);}
+    if(d.ok)insertRef(engine,d.rel); else alert("Upload failed: "+(d.error||""));
+  }catch(e){alert("Upload failed: "+e);}
 }
 async function uploadFiles(engine,files){for(const f of files)await uploadFile(engine,f);}
 

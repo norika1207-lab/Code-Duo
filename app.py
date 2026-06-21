@@ -134,7 +134,7 @@ def run(cmd, cwd, timeout=600):
 def ask_claude(text):
     t0 = time.time()
     if not CLAUDE_BIN:
-        return {"ok": False, "text": "[找不到 claude CLI] 請先安裝 Claude Code，或設 DUO_CLAUDE_BIN 指定路徑",
+        return {"ok": False, "text": "[claude CLI not found] Install Claude Code, or set DUO_CLAUDE_BIN to its path",
                 "ms": 0, "meta": {}}
     with LOCK:
         sid, cwd = STATE["claude"]["id"], STATE["claude"]["cwd"]
@@ -158,14 +158,14 @@ def ask_claude(text):
         return {"ok": not d.get("is_error"), "text": d.get("result", ""),
                 "ms": int((time.time()-t0)*1000), "meta": {"session": new_sid}}
     except Exception as e:
-        return {"ok": False, "text": f"[claude 解析失敗] {e}\n{err or out[:400]}",
+        return {"ok": False, "text": f"[claude parse failed] {e}\n{err or out[:400]}",
                 "ms": int((time.time()-t0)*1000), "meta": {}}
 
 
 def ask_codex(text):
     t0 = time.time()
     if not CODEX_BIN:
-        return {"ok": False, "text": "[找不到 codex CLI] 請先安裝 Codex，或設 DUO_CODEX_BIN 指定路徑",
+        return {"ok": False, "text": "[codex CLI not found] Install Codex, or set DUO_CODEX_BIN to its path",
                 "ms": 0, "meta": {}}
     with LOCK:
         tid, cwd = STATE["codex"]["id"], STATE["codex"]["cwd"]
@@ -197,7 +197,7 @@ def ask_codex(text):
     if new_tid:
         with LOCK:
             STATE["codex"]["id"] = new_tid
-    return {"ok": bool(msg), "text": msg or f"[codex 無回應]\n{err[:400]}",
+    return {"ok": bool(msg), "text": msg or f"[codex no response]\n{err[:400]}",
             "ms": int((time.time()-t0)*1000), "meta": {"thread": new_tid or tid}}
 
 
@@ -694,11 +694,11 @@ def check_honesty(engine, text, cwd, changed, write):
     # 核心打臉:可改檔模式下,嘴上一堆動作但磁碟 0 變動且沒任何宣稱檔被動過 = 裝忙兜圈子
     bluff = write and actions >= 2 and not changed and not verified
     if bad:
-        verdict, reason = "warn", "宣稱的檔案查無實證(找不到/空檔)"
+        verdict, reason = "warn", "claimed files have no evidence (missing/empty)"
     elif bluff:
-        verdict, reason = "warn", f"嘴上 {actions} 個動作,磁碟 0 檔變動(疑似裝忙)"
+        verdict, reason = "warn", f"{actions} actions claimed, 0 files changed on disk (looks like busywork)"
     elif actions or claims or changed:
-        verdict, reason = "ok", f"{len(changed)} 檔實際變動 · {len(verified)} 個宣稱有實證"
+        verdict, reason = "ok", f"{len(changed)} files changed · {len(verified)} claims verified"
     else:
         verdict, reason = "none", ""
     return {"ts": int(time.time()), "engine": engine, "claims": claims,
@@ -718,7 +718,7 @@ def record_behavior(engine, text, cwd, changed, write):
     rec["circling"] = rec["streak"] >= 3
     if rec["circling"]:
         rec["verdict"] = "warn"
-        rec["reason"] = f"連續 {rec['streak']} 輪宣稱進度但磁碟 0 變動(鬼打牆)"
+        rec["reason"] = f"{rec['streak']} turns in a row claiming progress with 0 disk changes (looping)"
     if rec["verdict"] == "none":
         return
     with LOCK:
@@ -807,7 +807,7 @@ class H(BaseHTTPRequestHandler):
         body = self.rfile.read(n) if n else b""
         if self.path == "/api/upload":
             if n > 60 * 1024 * 1024:
-                self._send(413, json.dumps({"error": "檔案太大(>60MB)"})); return
+                self._send(413, json.dumps({"error": "file too large (>60MB)"})); return
             fname = os.path.basename(unquote(self.headers.get("X-Filename", "file"))) or "file"
             fname = fname.replace("\x00", "")
             base = SETTINGS["project"] or HERE
@@ -863,7 +863,7 @@ class H(BaseHTTPRequestHandler):
         elif self.path == "/api/project":
             path = (req.get("path") or "").strip()
             if path and not os.path.isdir(os.path.expanduser(path)):
-                self._send(400, json.dumps({"error": f"目錄不存在: {path}"})); return
+                self._send(400, json.dumps({"error": f"directory not found: {path}"})); return
             path = os.path.expanduser(path) if path else None
             with LOCK:
                 changed = path is not None and path != SETTINGS["project"]
@@ -907,11 +907,11 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(os.environ.get("DUO_PORT", "8765"))
     banner = [
-        f"Code Duo 跑起來了  ->  http://localhost:{port}",
-        f"  平台: {SYS}",
-        f"  Claude CLI : {CLAUDE_BIN or '✗ 找不到(設 DUO_CLAUDE_BIN 或裝 Claude Code)'}",
-        f"  Claude 標題: {'桌面 App 索引' if CLAUDE_SESS else 'CLI projects jsonl(aiTitle)'}",
-        f"  Codex CLI  : {CODEX_BIN or '✗ 找不到(設 DUO_CODEX_BIN 或裝 Codex)'}",
+        f"Code Duo running  ->  http://localhost:{port}",
+        f"  platform : {SYS}",
+        f"  Claude CLI : {CLAUDE_BIN or 'not found (set DUO_CLAUDE_BIN or install Claude Code)'}",
+        f"  Claude titles : {'desktop app index' if CLAUDE_SESS else 'CLI projects jsonl (aiTitle)'}",
+        f"  Codex CLI  : {CODEX_BIN or 'not found (set DUO_CODEX_BIN or install Codex)'}",
         f"  Codex home : {CFG['codex_home']}",
     ]
     print("\n".join(banner), flush=True)
