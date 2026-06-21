@@ -214,6 +214,16 @@ function setTarget(t){
 document.querySelectorAll(".targets button").forEach(b=>b.onclick=()=>setTarget(b.dataset.t));
 document.getElementById("tgtprefix").onclick=()=>setTarget(TGT_ORDER[(TGT_ORDER.indexOf(target)+1)%3]);
 setTarget("both");
+// 全域攔截 Tab:不管焦點在哪都吃掉,只用來循環對象,絕不讓焦點亂跑
+document.addEventListener("keydown",e=>{
+  if(e.key==="Tab"){
+    e.preventDefault();e.stopPropagation();
+    const dir=e.shiftKey?-1:1;
+    setTarget(TGT_ORDER[(TGT_ORDER.indexOf(target)+dir+3)%3]);
+    box.focus();
+  }
+},true);
+box.focus();
 
 function add(col,cls,who,text){
   const d=document.createElement("div");d.className="msg "+cls;
@@ -291,7 +301,6 @@ async function send(){
 }
 document.getElementById("send").onclick=send;
 box.addEventListener("keydown",e=>{
-  if(e.key==="Tab"){e.preventDefault();setTarget(TGT_ORDER[(TGT_ORDER.indexOf(target)+1)%3]);return;}
   if(e.isComposing||e.keyCode===229) return;          // 中文選字中,Enter 只確認字不送出
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}
 });
