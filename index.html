@@ -14,10 +14,10 @@
   html,body{width:100%;overflow-x:hidden}
   body{margin:0;height:100vh;width:100vw;overflow:hidden;display:flex;flex-direction:column;
        background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,"PingFang TC",system-ui,sans-serif}
-  header{display:flex;align-items:center;gap:12px;padding:5px 14px;border-bottom:1px solid var(--line)}
+  header{display:flex;align-items:center;gap:12px;padding:3px 14px;border-bottom:1px solid var(--line)}
   button.mini{padding:3px 9px;font-size:11px;border-radius:6px}
   /* 每欄底部控制條:model / mode / effort / 用量(仿 Claude Code 底部) */
-  .cfgbar{display:flex;align-items:center;gap:7px;padding:5px 12px;border-top:1px solid var(--line);
+  .cfgbar{display:flex;align-items:center;gap:7px;padding:3px 12px;border-top:1px solid var(--line);
           background:#101218;flex:none}
   .cfgbar select{background:#1a1d26;color:var(--txt);border:1px solid var(--line);border-radius:6px;
                  padding:3px 6px;font-size:11px;cursor:pointer;max-width:120px}
@@ -36,22 +36,22 @@
   button:hover{border-color:#3a3f50}
 
   /* 頂部兩列面板(Token / 照妖鏡),stitch 卡片風 */
-  .panels{padding:9px 0;display:flex;flex-direction:column;gap:8px;
+  .panels{padding:4px 0;display:flex;flex-direction:column;gap:4px;
           background:#101218;border-bottom:1px solid var(--line)}
-  .prow{display:flex;align-items:center;min-height:34px}
+  .prow{display:flex;align-items:center;min-height:26px}
   .plabel{font-size:10px;letter-spacing:1.2px;color:var(--dim);width:230px;flex:none;font-weight:700;
           padding:0 14px}
   .pright{width:230px;flex:none}
   .tcards{display:flex;gap:10px;flex:1;min-width:0}
   .tcard{flex:1;min-width:0;display:flex;align-items:center;gap:14px;
-         background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 20px}
+         background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px 20px}
   .tcard .vn{flex:none}
   .kgroup{flex:1;display:flex;align-items:center;justify-content:space-evenly;gap:10px;min-width:0}
   .tcard .clearbtn{flex:none}
   .tcard .vn{font-size:12px;font-weight:700}
   .tcard.claude .vn{color:var(--claude)} .tcard.codex .vn{color:var(--codex)}
   .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
-  .tcard .kpi b{font-size:15px;font-weight:700}
+  .tcard .kpi b{font-size:13px;font-weight:700}
   .tcard .kpi span{font-size:9px;color:var(--dim);letter-spacing:.3px}
   .clearbtn{font-size:10px;padding:4px 9px;border-radius:7px;background:#11141b;
             border:1px solid var(--line);color:var(--dim);cursor:pointer;margin-left:4px}
@@ -106,7 +106,7 @@
 
   /* 中間兩個對話框 */
   .col{flex:1;display:flex;flex-direction:column;background:var(--panel);overflow:hidden;min-width:0}
-  .col h2{margin:0;padding:9px 14px;font-size:13px;border-bottom:1px solid var(--line);
+  .col h2{margin:0;padding:5px 14px;font-size:13px;border-bottom:1px solid var(--line);
           display:flex;align-items:center;gap:8px}
   .dot{width:9px;height:9px;border-radius:50%}
   .col.claude .dot{background:var(--claude)} .col.codex .dot{background:var(--codex)}
@@ -160,7 +160,7 @@
 <body>
   <header>
     <span class="brand">
-      <svg class="mark" width="26" height="26" viewBox="0 0 120 120">
+      <svg class="mark" width="20" height="20" viewBox="0 0 120 120">
         <rect x="6" y="6" width="108" height="108" rx="26" fill="#16181f" stroke="#2a2f40" stroke-width="2"/>
         <path d="M47 38 L26 60 L47 82" fill="none" stroke="#d97757" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M73 38 L94 60 L73 82" fill="none" stroke="#10a37f" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
