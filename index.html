@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Code Duo — Claude × Codex</title>
+<title>Code Duo — Claude × Antigravity</title>
 <link rel="icon" href="/logo.svg">
 <style>
   :root{
     --bg:#0e0f13; --panel:#16181f; --rail:#121419; --line:#252834; --txt:#e6e8ee; --dim:#8b90a0;
-    --claude:#d97757; --codex:#5b8def; --both:#10a37f; --user:#5b8def;
+    --claude:#d97757; --antigravity:#5b8def; --both:#10a37f; --user:#5b8def;
   }
   *{box-sizing:border-box}
   html,body{width:100%;overflow-x:hidden}
@@ -48,10 +48,21 @@
   .tcard .vn{flex:none;font-size:12px;font-weight:700}
   .kgroup{flex:1;display:flex;align-items:center;justify-content:space-evenly;gap:10px;min-width:0}
   .tcard .clearbtn{flex:none}
-  .tcard.claude .vn{color:var(--claude)} .tcard.codex .vn{color:var(--codex)}
+  .tcard.claude .vn{color:var(--claude)} .tcard.antigravity .vn{color:var(--antigravity)}
   .tcard .kpi{display:flex;flex-direction:column;line-height:1.15}
   .tcard .kpi b{font-size:13px;font-weight:700}
   .tcard .kpi span{font-size:9px;color:var(--dim);letter-spacing:.3px}
+  /* Antigravity real /usage quota gauges (5-hour + weekly per model group) */
+  .qgroup{flex:1;display:flex;gap:18px;min-width:0;align-items:center;justify-content:space-evenly}
+  .qg{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .qgname{font-size:9px;color:var(--dim);letter-spacing:.3px;font-weight:700;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  .qbar{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--dim)}
+  .qbar .k{width:15px;flex:none}
+  .qbar .track{width:64px;height:6px;border-radius:3px;background:#222634;overflow:hidden;flex:none}
+  .qbar .track i{display:block;height:100%;border-radius:3px}
+  .qbar .pv{flex:none;font-size:9px;color:#cdd2e0;min-width:30px}
+  .lvl-hi{background:#4ad07a} .lvl-mid{background:#e0a93b} .lvl-lo{background:#e05a5a}
   .clearbtn{font-size:10px;padding:4px 9px;border-radius:7px;background:#11141b;
             border:1px solid var(--line);color:var(--dim);cursor:pointer;margin-left:4px}
   .clearbtn:hover{border-color:var(--user);color:#fff}
@@ -71,12 +82,12 @@
   .rail .newlink{padding:9px 14px 5px;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;
                  align-items:center;gap:5px;white-space:nowrap;user-select:none}
   .rail.claude .newlink{justify-content:flex-start;color:var(--claude)}
-  .rail.codex .newlink{justify-content:flex-end;color:var(--codex)}
+  .rail.antigravity .newlink{justify-content:flex-end;color:var(--antigravity)}
   .rail .newlink:hover{filter:brightness(1.35);text-decoration:underline}
   .rail .rhead{padding:7px 12px;font-size:12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
                display:flex;align-items:center;gap:6px;color:var(--dim)}
   .rail .rhead .d{width:8px;height:8px;border-radius:50%}
-  .rail.claude .rhead .d{background:var(--claude)} .rail.codex .rhead .d{background:var(--codex)}
+  .rail.claude .rhead .d{background:var(--claude)} .rail.antigravity .rhead .d{background:var(--antigravity)}
   .rail .rhead .rf{cursor:pointer}
   .rhead .hidtog{cursor:pointer;font-size:11px}
   .rhead .hidtog.on{color:var(--user)}
@@ -149,7 +160,7 @@
   .tgtprefix{display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;flex:none;
              border:1px solid var(--line);border-right:none;border-radius:10px 0 0 10px;
              background:#11141b;cursor:pointer;white-space:nowrap;user-select:none}
-  .tgtprefix.claude{color:var(--claude)} .tgtprefix.codex{color:var(--codex)} .tgtprefix.both{color:var(--both)}
+  .tgtprefix.claude{color:var(--claude)} .tgtprefix.antigravity{color:var(--antigravity)} .tgtprefix.both{color:var(--both)}
   textarea{flex:1;resize:none;background:var(--bg);color:var(--txt);border:1px solid var(--line);
            border-radius:0 10px 10px 0;padding:9px 44px 9px 12px;font:14px/1.4 inherit;height:40px;min-height:40px;max-height:160px}
   .sendico{position:absolute;right:6px;bottom:6px;width:28px;height:28px;padding:0;border-radius:7px;
@@ -171,7 +182,7 @@
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .popmenu .pmi:hover{background:#2a3142}
   .popmenu .ic{color:var(--dim);flex:none;width:15px;text-align:center}
-  .popmenu .pmi.cl .ic{color:var(--claude)} .popmenu .pmi.cx .ic{color:var(--codex)}
+  .popmenu .pmi.cl .ic{color:var(--claude)} .popmenu .pmi.cx .ic{color:var(--antigravity)}
   /* center modal for starting a new session */
   .mask{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:80;display:none;
         align-items:center;justify-content:center}
@@ -199,7 +210,7 @@
       </svg>
       <h1>Code&nbsp;Duo</h1>
     </span>
-    <span class="sub">Claude × Codex · one window · subscription, no API</span>
+    <span class="sub">Claude × Antigravity · one window · subscription, no API</span>
     <div class="right">
       <span id="projlabel" class="projlabel" title="Shared project directory for both agents">Project: none</span>
       <button id="setproj" class="mini">Set project</button>
@@ -226,17 +237,17 @@
       <div class="cfgbar" data-e="claude"><span class="tag" id="t-claude">idle</span></div>
     </div>
 
-    <!-- center right: Codex conversation -->
-    <div class="col codex">
-      <div class="log" id="log-codex"></div>
-      <div class="cfgbar" data-e="codex"><span class="tag" id="t-codex">idle</span></div>
+    <!-- center right: Antigravity conversation -->
+    <div class="col antigravity">
+      <div class="log" id="log-antigravity"></div>
+      <div class="cfgbar" data-e="antigravity"><span class="tag" id="t-antigravity">idle</span></div>
     </div>
 
-    <!-- far right: Codex history -->
-    <div class="rail codex">
-      <a class="newlink cx" data-e="codex" title="Start a new conversation (reset session)">+ New chat</a>
-      <div class="rhead"><span class="d"></span>Codex history<span class="hidtog" data-e="codex" title="Show/hide archived">Archived</span><span class="rf" data-e="codex" title="Refresh">⟳</span></div>
-      <div class="rlist" id="rail-codex">Loading…</div>
+    <!-- far right: Antigravity history -->
+    <div class="rail antigravity">
+      <a class="newlink cx" data-e="antigravity" title="Start a new conversation (reset session)">+ New chat</a>
+      <div class="rhead"><span class="d"></span>Antigravity history<span class="hidtog" data-e="antigravity" title="Show/hide archived">Archived</span><span class="rf" data-e="antigravity" title="Refresh">⟳</span></div>
+      <div class="rlist" id="rail-antigravity">Loading…</div>
     </div>
   </div>
 
@@ -245,12 +256,12 @@
     <input type="file" id="fileinput" multiple hidden>
     <div class="targets">
       <button data-t="claude">Claude</button>
-      <button data-t="codex">Codex</button>
+      <button data-t="antigravity">Antigravity</button>
       <button data-t="both" class="on">Both</button>
     </div>
     <div class="inputwrap">
       <span class="tgtprefix both" id="tgtprefix" title="Press Tab to switch target">Both:</span>
-      <textarea id="box" placeholder="Press Tab to switch Claude / Codex / Both…"></textarea>
+      <textarea id="box" placeholder="Press Tab to switch Claude / Antigravity / Both…"></textarea>
       <button class="sendico" id="send" title="Send (Enter)">↵</button>
     </div>
   </footer>
@@ -272,12 +283,12 @@
 <script>
 let target="both";
 const box=document.getElementById("box");
-const logs={claude:document.getElementById("log-claude"),codex:document.getElementById("log-codex")};
-const tags={claude:document.getElementById("t-claude"),codex:document.getElementById("t-codex")};
-const rails={claude:document.getElementById("rail-claude"),codex:document.getElementById("rail-codex")};
+const logs={claude:document.getElementById("log-claude"),antigravity:document.getElementById("log-antigravity")};
+const tags={claude:document.getElementById("t-claude"),antigravity:document.getElementById("t-antigravity")};
+const rails={claude:document.getElementById("rail-claude"),antigravity:document.getElementById("rail-antigravity")};
 
-const TGT_ORDER=["claude","codex","both"];
-const TGT_NAME={claude:"Claude",codex:"Codex",both:"Both"};
+const TGT_ORDER=["claude","antigravity","both"];
+const TGT_NAME={claude:"Claude",antigravity:"Antigravity",both:"Both"};
 function setTarget(t){
   target=t;
   document.querySelectorAll(".targets button").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
@@ -336,7 +347,7 @@ function renderLive(L){
 function finalizeLive(engine,L,ms){
   const finalText=L.segs.filter(s=>s.type==="text").map(s=>s.t).join("\n");
   L.box.querySelector(".who").textContent=engine+" · "+(ms/1000).toFixed(1)+"s";
-  const other=engine==="claude"?"codex":"claude";
+  const other=engine==="claude"?"antigravity":"claude";
   const oName=other.charAt(0).toUpperCase()+other.slice(1);
   const acts=document.createElement("div");acts.className="acts";
   acts.innerHTML=`<button class="act" data-a="h">→ Hand to ${oName}</button><button class="act" data-a="a">→ ${oName} review</button>`;
@@ -345,7 +356,7 @@ function finalizeLive(engine,L,ms){
   L.box.appendChild(acts);
 }
 async function streamRun(target,text,sysNote){
-  const cols=target==="both"?["claude","codex"]:[target];
+  const cols=target==="both"?["claude","antigravity"]:[target];
   cols.forEach(c=>{ if(sysNote)add(c,"sys","",sysNote); else add(c,"user","You",text); });
   const live={};
   cols.forEach(c=>{tags[c].textContent="working…";live[c]=newLive(c);});
@@ -372,7 +383,7 @@ async function streamRun(target,text,sysNote){
 
 // cross-feed: build a hand-off or review prompt from the other side's output, then stream it
 function crossFeed(target,mode,srcText){
-  const src=target==="claude"?"Codex":"Claude";
+  const src=target==="claude"?"Antigravity":"Claude";
   let prompt,note;
   if(mode==="handoff"){
     note=`↩ Taking over ${src}'s last message`;
@@ -387,7 +398,7 @@ function crossFeed(target,mode,srcText){
 async function send(){
   let text=box.value.trim();if(!text)return;
   let t=target;
-  const m=text.match(/^@(claude|codex|both)\s+/i);
+  const m=text.match(/^@(claude|antigravity|both)\s+/i);
   if(m){t=m[1].toLowerCase();text=text.slice(m[0].length);}
   box.value="";box.style.height="40px";
   streamRun(t,text);
@@ -399,7 +410,7 @@ box.addEventListener("keydown",e=>{
 });
 box.addEventListener("input",()=>{box.style.height="40px";box.style.height=Math.min(box.scrollHeight,160)+"px";});
 document.getElementById("reset").onclick=async()=>{
-  await fetch("/api/reset",{method:"POST"});logs.claude.innerHTML="";logs.codex.innerHTML="";
+  await fetch("/api/reset",{method:"POST"});logs.claude.innerHTML="";logs.antigravity.innerHTML="";
   document.querySelectorAll(".sitem").forEach(x=>x.classList.remove("active"));
 };
 
@@ -422,8 +433,8 @@ document.getElementById("setproj").onclick=async()=>{
   if(p===null)return;
   const old=curProject;curProject=p.trim()||null;
   if(!await postProj()){curProject=old;}
-  else{logs.claude.innerHTML="";logs.codex.innerHTML="";
-    add("claude","sys","",`Switched to project ${curProject||"(none)"}`);add("codex","sys","",`Switched to project ${curProject||"(none)"}`);}
+  else{logs.claude.innerHTML="";logs.antigravity.innerHTML="";
+    add("claude","sys","",`Switched to project ${curProject||"(none)"}`);add("antigravity","sys","",`Switched to project ${curProject||"(none)"}`);}
 };
 (async()=>{try{const d=await(await fetch("/api/project")).json();curProject=d.project;renderProj();}catch(e){}})();
 
@@ -434,10 +445,14 @@ const CFG_OPTS={
     mode:[["default","Default"],["acceptEdits","Accept edits"],["plan","Plan"],["bypassPermissions","Bypass"]],
     effort:[["","Effort"],["low","Low"],["medium","Medium"],["high","High"],["extra","Extra"],["max","Max"],["ultracode","Ultracode"]]
   },
-  codex:{
-    model:[["","Model"],["gpt-5.5","GPT-5.5"],["gpt-5.4","GPT-5.4"],["gpt-5.4-mini","GPT-5.4-Mini"],["gpt-5.3-codex-spark","GPT-5.3-Codex-Spark"]],
-    mode:[["read-only","Read-only"],["workspace-write","Workspace-write"],["danger-full-access","Full access"]],
-    effort:[["","Reasoning"],["low","Low"],["medium","Medium"],["high","High"],["xhigh","x-High"]]
+  antigravity:{
+    // agy --model takes the model's display string verbatim; reasoning effort is baked into the variant
+    model:[["","Model"],
+      ["Gemini 3.1 Pro (High)","Gemini 3.1 Pro · High"],["Gemini 3.1 Pro (Low)","Gemini 3.1 Pro · Low"],
+      ["Gemini 3.5 Flash (High)","Gemini 3.5 Flash · High"],["Gemini 3.5 Flash (Medium)","Gemini 3.5 Flash · Med"],
+      ["Gemini 3.5 Flash (Low)","Gemini 3.5 Flash · Low"],["Claude Sonnet 4.6 (Thinking)","Claude Sonnet 4.6"],
+      ["Claude Opus 4.6 (Thinking)","Claude Opus 4.6"],["GPT-OSS 120B (Medium)","GPT-OSS 120B"]],
+    mode:[["sandbox","Sandbox"],["skip-permissions","Full access"]]
   }
 };
 function buildSelect(engine,kind,cur){
@@ -451,9 +466,9 @@ function buildSelect(engine,kind,cur){
 }
 (async()=>{
   let cfg={};try{cfg=await(await fetch("/api/agent-config")).json();}catch(e){}
-  ["claude","codex"].forEach(e=>{
+  ["claude","antigravity"].forEach(e=>{
     const bar=document.querySelector(`.cfgbar[data-e="${e}"]`);if(!bar)return;
-    ["model","mode","effort"].forEach(k=>bar.appendChild(buildSelect(e,k,(cfg[e]||{})[k]||"")));
+    Object.keys(CFG_OPTS[e]).forEach(k=>bar.appendChild(buildSelect(e,k,(cfg[e]||{})[k]||"")));
     if(e==="claude"){
       const ft=document.createElement("button");ft.className="fastbtn";ft.textContent="⚡Fast";
       ft.title="Fast mode (Opus only): faster output";
@@ -471,8 +486,8 @@ const newmask=document.getElementById("newmask");
 async function openNewModal(engine){
   newEngine=engine;
   const ttl=document.getElementById("newtitle");
-  ttl.textContent="New "+(engine==="claude"?"Claude":"Codex")+" session";
-  ttl.style.color=engine==="claude"?"var(--claude)":"var(--codex)";
+  ttl.textContent="New "+(engine==="claude"?"Claude":"Antigravity")+" session";
+  ttl.style.color=engine==="claude"?"var(--claude)":"var(--antigravity)";
   document.getElementById("newmsg").value="";
   const sel=document.getElementById("newproj");
   sel.innerHTML='<option value="">None (default home)</option>';
@@ -501,10 +516,10 @@ document.getElementById("newmsg").addEventListener("keydown",e=>{
 document.querySelectorAll(".newlink").forEach(b=>b.onclick=()=>openNewModal(b.dataset.e));
 
 // ---- side history rails (auto-sync every second, no repaint if unchanged) ----
-const collapsedG={claude:new Set(),codex:new Set()};
-const activeId={claude:null,codex:null};
-const railSig={claude:null,codex:null};
-const railInit={claude:false,codex:false};
+const collapsedG={claude:new Set(),antigravity:new Set()};
+const activeId={claude:null,antigravity:null};
+const railSig={claude:null,antigravity:null};
+const railInit={claude:false,antigravity:false};
 
 async function loadRail(engine,force){
   let rows;
@@ -573,7 +588,7 @@ async function loadSession(engine,s,el){
 }
 
 // ---- per-session ⋮ menu + archived toggle ----
-const hiddenMode={claude:false,codex:false};
+const hiddenMode={claude:false,antigravity:false};
 async function patchSession(engine,id,patch){
   await fetch("/api/session/patch",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({engine,id,patch})});
@@ -603,28 +618,67 @@ function openMenu(e,engine,s){
 document.querySelectorAll(".rf").forEach(b=>b.onclick=()=>loadRail(b.dataset.e,true));
 document.querySelectorAll(".hidtog").forEach(b=>b.onclick=()=>{
   const e=b.dataset.e;hiddenMode[e]=!hiddenMode[e];b.classList.toggle("on",hiddenMode[e]);railSig[e]=null;loadRail(e,true);});
-loadRail("claude",true);loadRail("codex",true);
+loadRail("claude",true);loadRail("antigravity",true);
 // auto-sync once a second; no repaint when nothing changed, so high frequency doesn't flicker
-setInterval(()=>{loadRail("claude");loadRail("codex");},1000);
+setInterval(()=>{loadRail("claude");loadRail("antigravity");},1000);
 
 // ---- top panels: token usage + watchdog ----
 function fmtTok(n){return n>=1e9?(n/1e9).toFixed(1)+"B":n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(0)+"K":""+n;}
+let _tokData=null,_agyUsage=null;
 async function refreshTokens(){
-  try{
-    const d=await(await fetch("/api/tokens")).json();
-    document.getElementById("tcards").innerHTML=["claude","codex"].map(v=>{
-      const a=d[v];
-      return `<div class="tcard ${v}"><span class="vn">${v==="claude"?"Claude":"Codex"}</span>
-        <div class="kgroup">
-          <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>cost</span></div>
-          <div class="kpi"><b>${fmtTok(a.total_tokens)}</b><span>tokens</span></div>
-          <div class="kpi"><b>${a.cache_pct}%</b><span>cache hit</span></div>
-          <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div>
-        </div>
-        <button class="clearbtn" data-v="${v}" title="Clear ${v} context: next message starts a fresh session and stops re-caching the old context (saves tokens)">Clear cache</button></div>`;
-    }).join("");
-    document.querySelectorAll(".clearbtn").forEach(b=>b.onclick=()=>clearContext(b.dataset.v));
-  }catch(e){}
+  try{_tokData=await(await fetch("/api/tokens")).json();}catch(e){}
+  renderCards();
+}
+// Antigravity exposes no per-turn tokens/cost on disk; its real usage comes from the `/usage`
+// slash command, which the backend scrapes from the agy TUI -> per-group quota gauges (% remaining).
+async function refreshAgyUsage(){
+  try{_agyUsage=await(await fetch("/api/agy-usage")).json();}catch(e){}
+  renderCards();
+}
+function _clearBtn(v){
+  return `<button class="clearbtn" data-v="${v}" title="Clear ${v} context: next message starts a fresh session and stops re-caching the old context (saves tokens)">Clear cache</button>`;
+}
+function _claudeCard(){
+  const a=_tokData&&_tokData.claude;
+  const kpis=a?`
+      <div class="kpi"><b>$${a.cost.toFixed(2)}</b><span>cost</span></div>
+      <div class="kpi"><b>${fmtTok(a.total_tokens)}</b><span>tokens</span></div>
+      <div class="kpi"><b>${a.cache_pct}%</b><span>cache hit</span></div>
+      <div class="kpi"><b>${a.sessions}</b><span>sessions</span></div>`:`
+      <div class="kpi"><b>n/a</b><span>usage not on disk</span></div>`;
+  return `<div class="tcard claude"><span class="vn">Claude</span>
+    <div class="kgroup">${kpis}</div>${_clearBtn("claude")}</div>`;
+}
+function _agyCard(){
+  const u=_agyUsage;
+  let body;
+  if(!u){body=`<div class="kpi"><b>…</b><span>loading quota</span></div>`;}
+  else if(!u.available){body=`<div class="kpi"><b>n/a</b><span>${u.reason||"unavailable"}</span></div>`;}
+  else{
+    const bar=(lim,k)=>{
+      if(!lim)return "";
+      const pct=lim.pct==null?100:lim.pct;
+      const lvl=pct>=50?"lvl-hi":pct>=20?"lvl-mid":"lvl-lo";
+      const pv=lim.available?"full":Math.round(pct)+"%";
+      const tip=lim.available?"Quota available (none consumed)"
+        :`${lim.remaining_pct!=null?lim.remaining_pct+"% remaining":pct+"%"}${lim.refresh?" · refreshes in "+lim.refresh:""}`;
+      return `<div class="qbar" title="${(k==="5h"?"5-hour limit — ":"weekly limit — ")+tip}">`
+        +`<span class="k">${k}</span><span class="track"><i class="${lvl}" style="width:${pct}%"></i></span>`
+        +`<span class="pv">${pv}</span></div>`;
+    };
+    const groups=u.groups.map(g=>
+      `<div class="qg"><div class="qgname" title="${g.models||""}">${g.group.replace(/ MODELS$/,"")}</div>`
+      +bar(g.five_hour,"5h")+bar(g.weekly,"wk")+`</div>`).join("");
+    body=`<div class="qgroup">${groups}</div>`;
+  }
+  const tip=u&&u.available?`Real quota from agy /usage · ${u.account||""} · % = quota remaining (not tokens/cost — Antigravity hides those)`
+    :"Antigravity real usage via the agy /usage command";
+  return `<div class="tcard antigravity"><span class="vn" title="${tip}">Antigravity</span>
+    ${body}${_clearBtn("antigravity")}</div>`;
+}
+function renderCards(){
+  document.getElementById("tcards").innerHTML=_claudeCard()+_agyCard();
+  document.querySelectorAll(".clearbtn").forEach(b=>b.onclick=()=>clearContext(b.dataset.v));
 }
 async function clearContext(engine){
   if(!confirm(`Clear ${engine}'s conversation context?\nThe next message starts a brand-new session and no longer carries the cached context (saves tokens).\nHistory sessions are not deleted.`))return;
@@ -660,6 +714,8 @@ async function refreshBehavior(){
   }catch(e){}
 }
 setInterval(refreshTokens,15000);refreshTokens();
+// agy /usage is backed by a ~60s server-side cache, so poll on a relaxed cadence
+setInterval(refreshAgyUsage,30000);refreshAgyUsage();
 setInterval(refreshBehavior,2000);refreshBehavior();
 
 // ---- the "+" left of the input: per-target file add (upload / drag / browse project) ----
@@ -684,7 +740,7 @@ async function openFileBrowser(engine,rel){
   let data={};try{data=await(await fetch("/api/files?dir="+encodeURIComponent(rel||""))).json();}catch(e){}
   m.innerHTML="";
   const head=document.createElement("div");head.className="pmhead";
-  head.innerHTML=`<span class="ic">⚡</span>${engine==="claude"?"Claude":"Codex"} · add · /${escapeHtml(data.rel||"")}`;
+  head.innerHTML=`<span class="ic">⚡</span>${engine==="claude"?"Claude":"Antigravity"} · add · /${escapeHtml(data.rel||"")}`;
   m.appendChild(head);
   if(data.rel){
     const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">↑</span>Up';
@@ -705,7 +761,7 @@ function chooseAgentThen(cb){
   closePop();
   const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
   m.innerHTML='<div class="pmhead">Add to which</div>';
-  [["claude","Claude","cl"],["codex","Codex","cx"]].forEach(([e,label,cls])=>{
+  [["claude","Claude","cl"],["antigravity","Antigravity","cx"]].forEach(([e,label,cls])=>{
     const it=document.createElement("div");it.className="pmi "+cls;
     it.innerHTML=`<span class="ic">⚡</span>${label}`;it.onclick=()=>cb(e);m.appendChild(it);
   });
@@ -714,7 +770,7 @@ function chooseAgentThen(cb){
 function showPlusMenu(engine){
   closePop();
   const m=document.createElement("div");m.className="popmenu";document.body.appendChild(m);
-  m.innerHTML=`<div class="pmhead"><span class="ic">⚡</span>${engine==="claude"?"Claude":"Codex"} · add files</div>`;
+  m.innerHTML=`<div class="pmhead"><span class="ic">⚡</span>${engine==="claude"?"Claude":"Antigravity"} · add files</div>`;
   const up=document.createElement("div");up.className="pmi";up.innerHTML='<span class="ic">📤</span>Upload from computer…';
   up.onclick=()=>{closePop();pickFiles(engine);};m.appendChild(up);
   const br=document.createElement("div");br.className="pmi";br.innerHTML='<span class="ic">📁</span>Browse project files';

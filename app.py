@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Code Duo — one window driving Claude and Codex; resume past sessions, hand off, audit.
-# No API: drives the claude / codex CLIs, authenticated with your subscriptions.
+# Code Duo — one window driving Claude and Antigravity (Gemini); resume past sessions, hand off, audit.
+# No API: drives the claude / agy CLIs, authenticated with your subscriptions.
 import json, subprocess, threading, time, os, glob, re, shutil, platform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
@@ -28,10 +28,9 @@ def discover():
         "/opt/homebrew/bin/claude", "/usr/local/bin/claude",
         os.path.join(HOME, ".local/bin/claude"), os.path.join(HOME, ".npm-global/bin/claude"),
         os.path.join(HOME, ".bun/bin/claude")])
-    codex_bin = os.environ.get("DUO_CODEX_BIN") or _which("codex", [
-        "/Applications/Codex.app/Contents/Resources/codex",
-        "/opt/homebrew/bin/codex", "/usr/local/bin/codex",
-        os.path.join(HOME, ".local/bin/codex")])
+    agy_bin = os.environ.get("DUO_AGY_BIN") or _which("agy", [
+        os.path.join(HOME, ".local/bin/agy"),
+        "/opt/homebrew/bin/agy", "/usr/local/bin/agy"])
 
     # Claude CLI config dir (override with CLAUDE_CONFIG_DIR) -> projects/
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude")
@@ -47,48 +46,49 @@ def discover():
         sess_cands = [os.path.join(xdg, "Claude", "claude-code-sessions")]
     claude_sess = _first_dir(sess_cands)
 
-    # Codex home (override with CODEX_HOME)
-    cx = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
-    codex_dirs = [os.path.join(cx, "sessions"), os.path.join(cx, "archived_sessions")]
+    # Antigravity CLI home (override with ANTIGRAVITY_CLI_DIR); the agy CLI reuses the ~/.gemini tree
+    ag = os.environ.get("ANTIGRAVITY_CLI_DIR") or os.path.join(HOME, ".gemini", "antigravity-cli")
 
     return {
-        "claude_bin": claude_bin, "codex_bin": codex_bin,
+        "claude_bin": claude_bin, "agy_bin": agy_bin,
         "claude_proj": claude_proj, "claude_sess": claude_sess,
-        "codex_home": cx, "codex_dirs": codex_dirs,
-        "codex_index": os.path.join(cx, "session_index.jsonl"),
-        "codex_state": os.path.join(cx, ".codex-global-state.json"),
+        "agy_home": ag,
+        "agy_conversations": os.path.join(ag, "conversations"),
+        "agy_history": os.path.join(ag, "history.jsonl"),
+        "agy_last": os.path.join(ag, "cache", "last_conversations.json"),
+        "agy_projects": os.path.join(ag, "cache", "projects.json"),
     }
 
 
 CFG = discover()
 CLAUDE_BIN = CFG["claude_bin"]
-CODEX_BIN = CFG["codex_bin"]
+AGY_BIN = CFG["agy_bin"]
 CLAUDE_PROJ = CFG["claude_proj"]
 CLAUDE_SESS = CFG["claude_sess"]
-CODEX_DIRS = CFG["codex_dirs"]
+AGY_CONVS = CFG["agy_conversations"]
 
 # each agent remembers which session it's resuming + which dir to run in (resume is cwd-bound)
-STATE = {"claude": {"id": None, "cwd": HERE}, "codex": {"id": None, "cwd": HERE}}
+STATE = {"claude": {"id": None, "cwd": HERE}, "antigravity": {"id": None, "cwd": HERE}}
 # shared setting: the real project directory both agents work in
 SETTINGS = {"project": None}
-# per-agent model / mode / effort (like the controls at the bottom of Claude Code)
+# per-agent model / mode (like the controls at the bottom of Claude Code).
+# agy bakes reasoning effort into the model variant (e.g. "Gemini 3.1 Pro (High)"), so there is no separate effort.
 AGENT_CFG = {
     "claude": {"model": "", "mode": "default", "effort": "", "fast": False},
-    "codex": {"model": "", "mode": "read-only", "effort": ""},
+    "antigravity": {"model": "", "mode": "sandbox"},
 }
 # which modes can write files (used by the watchdog to decide whether to diff the disk)
-_WRITABLE = {"acceptEdits", "bypassPermissions", "auto", "dontAsk", "workspace-write", "danger-full-access"}
+_WRITABLE = {"acceptEdits", "bypassPermissions", "auto", "dontAsk", "skip-permissions"}
 LOCK = threading.Lock()
 
-# USD price per million tokens (from mercury-cache-panel)
+# USD price per million tokens (from mercury-cache-panel). Only Claude exposes per-turn usage on disk.
 PRICING = {
     "claude": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
-    "codex":  {"input": 2.50, "output": 10.00, "cache_read": 0.25, "cache_write": 0.0},
 }
 # watchdog: recent claim-vs-evidence checks (newest first)
 BEHAVIOR = []
 # loop detection: per-agent count of consecutive 'claimed actions but 0 disk change' turns
-STREAK = {"claude": 0, "codex": 0}
+STREAK = {"claude": 0, "antigravity": 0}
 _TOK_CACHE = {"ts": 0, "data": None}
 
 # Code Duo's own overrides (rename/pin/archive/delete); never touches the official apps' data
@@ -162,43 +162,35 @@ def ask_claude(text):
                 "ms": int((time.time()-t0)*1000), "meta": {}}
 
 
-def ask_codex(text):
+def _agy_cmd(text, sid, cfg):
+    # agy is print-only (no JSON/streaming): one prompt in, plain text out
+    cmd = [AGY_BIN, "--print-timeout", "600s"]
+    cmd += ["--dangerously-skip-permissions"] if cfg["mode"] == "skip-permissions" else ["--sandbox"]
+    if cfg["model"]:
+        cmd += ["--model", cfg["model"]]
+    if sid:
+        cmd += ["--conversation", sid]
+    cmd += ["-p", text]
+    return cmd
+
+
+def ask_antigravity(text):
     t0 = time.time()
-    if not CODEX_BIN:
-        return {"ok": False, "text": "[codex CLI not found] Install Codex, or set DUO_CODEX_BIN to its path",
+    if not AGY_BIN:
+        return {"ok": False, "text": "[agy CLI not found] Install the Antigravity CLI, or set DUO_AGY_BIN to its path",
                 "ms": 0, "meta": {}}
     with LOCK:
-        tid, cwd = STATE["codex"]["id"], STATE["codex"]["cwd"]
-        cfg = dict(AGENT_CFG["codex"])
-    mode = cfg["mode"] or "read-only"
-    flags = ["--json", "--skip-git-repo-check", "-c", f"sandbox_mode={mode}"]
-    if mode in _WRITABLE:
-        flags += ["-c", "approval_policy=never"]
-    if cfg["model"]:
-        flags += ["-m", cfg["model"]]
-    if cfg["effort"]:
-        flags += ["-c", f"model_reasoning_effort={cfg['effort']}"]
-    if tid:
-        cmd = [CODEX_BIN, "exec", "resume", tid] + flags + [text]
-    else:
-        cmd = [CODEX_BIN, "exec"] + flags + [text]
-    rc, out, err = run(cmd, cwd)
-    msg, new_tid = "", None
-    for ln in out.splitlines():
-        try:
-            d = json.loads(ln.strip())
-        except Exception:
-            continue
-        if d.get("type") == "thread.started":
-            new_tid = d.get("thread_id")
-        it = d.get("item", {})
-        if isinstance(it, dict) and it.get("type") == "agent_message":
-            msg = it.get("text", msg)
-    if new_tid:
+        sid, cwd = STATE["antigravity"]["id"], STATE["antigravity"]["cwd"]
+        cfg = dict(AGENT_CFG["antigravity"])
+    rc, out, err = run(_agy_cmd(text, sid, cfg), cwd)
+    final = (out or "").strip()
+    # agy never prints the conversation id; recover it from the cache it writes per workspace
+    new_sid = _agy_last_conversation(cwd) or sid
+    if new_sid:
         with LOCK:
-            STATE["codex"]["id"] = new_tid
-    return {"ok": bool(msg), "text": msg or f"[codex no response]\n{err[:400]}",
-            "ms": int((time.time()-t0)*1000), "meta": {"thread": new_tid or tid}}
+            STATE["antigravity"]["id"] = new_sid
+    return {"ok": bool(final), "text": final or f"[agy no response]\n{err[:400]}",
+            "ms": int((time.time()-t0)*1000), "meta": {"conversation": new_sid}}
 
 
 def _fmt_tool(name, inp):
@@ -260,51 +252,31 @@ def run_stream_claude(text, emit):
     return final
 
 
-def run_stream_codex(text, emit):
-    if not CODEX_BIN:
-        emit({"engine": "codex", "k": "text", "t": "[codex CLI not found]"}); return ""
+def run_stream_antigravity(text, emit):
+    if not AGY_BIN:
+        emit({"engine": "antigravity", "k": "text", "t": "[agy CLI not found]"}); return ""
     with LOCK:
-        tid, cwd = STATE["codex"]["id"], STATE["codex"]["cwd"]
-        cfg = dict(AGENT_CFG["codex"])
-    mode = cfg["mode"] or "read-only"
-    flags = ["--json", "--skip-git-repo-check", "-c", f"sandbox_mode={mode}"]
-    if mode in _WRITABLE:
-        flags += ["-c", "approval_policy=never"]
-    if cfg["model"]:
-        flags += ["-m", cfg["model"]]
-    if cfg["effort"]:
-        flags += ["-c", f"model_reasoning_effort={cfg['effort']}"]
-    cmd = ([CODEX_BIN, "exec", "resume", tid] + flags + [text]) if tid else ([CODEX_BIN, "exec"] + flags + [text])
-    final, newtid = "", None
+        sid, cwd = STATE["antigravity"]["id"], STATE["antigravity"]["cwd"]
+        cfg = dict(AGENT_CFG["antigravity"])
+    # agy has no streaming/JSON event API, so there's no live step-by-step feed:
+    # run the one-shot and emit the final answer in a single block.
+    emit({"engine": "antigravity", "k": "tool", "t": "▸ agy running…"})
+    final = ""
     try:
-        p = subprocess.Popen(cmd, cwd=cwd or HERE, stdin=subprocess.DEVNULL,
-                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
-        for line in p.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                d = json.loads(line)
-            except Exception:
-                continue
-            if d.get("type") == "thread.started":
-                newtid = d.get("thread_id")
-            if d.get("type") == "item.completed":
-                it = d.get("item", {}) if isinstance(d.get("item"), dict) else {}
-                ty = it.get("type")
-                if ty == "agent_message":
-                    final = it.get("text", "") or final
-                    emit({"engine": "codex", "k": "text", "t": it.get("text", "")})
-                elif ty == "command_execution":
-                    emit({"engine": "codex", "k": "tool", "t": "⌘ " + str(it.get("command", ""))[:120]})
-                elif ty == "file_change":
-                    emit({"engine": "codex", "k": "tool", "t": "✎ " + str(it.get("path") or it.get("changes") or "")[:120]})
-        p.wait()
+        p = subprocess.Popen(_agy_cmd(text, sid, cfg), cwd=cwd or HERE, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out, err = p.communicate()
+        final = (out or "").strip()
+        if not final and err:
+            final = f"[agy error] {err.strip()[:400]}"
+        if final:
+            emit({"engine": "antigravity", "k": "text", "t": final})
     except Exception as e:
-        emit({"engine": "codex", "k": "text", "t": f"[error] {e}"})
-    if newtid:
+        emit({"engine": "antigravity", "k": "text", "t": f"[error] {e}"})
+    new_sid = _agy_last_conversation(cwd) or sid
+    if new_sid:
         with LOCK:
-            STATE["codex"]["id"] = newtid
+            STATE["antigravity"]["id"] = new_sid
     return final
 
 
@@ -313,12 +285,12 @@ def handle_stream(target, text, emit):
         proj = SETTINGS["project"]
         writable = {e: (AGENT_CFG[e]["mode"] in _WRITABLE) for e in AGENT_CFG}
     before = _snapshot(proj) if proj else {}
-    engines = [e for e in ("claude", "codex") if target in (e, "both")]
+    engines = [e for e in ("claude", "antigravity") if target in (e, "both")]
     results = {}
 
     def work(e):
         t0 = time.time()
-        fn = run_stream_claude if e == "claude" else run_stream_codex
+        fn = run_stream_claude if e == "claude" else run_stream_antigravity
         final = fn(text, emit)
         results[e] = {"text": final, "ms": int((time.time() - t0) * 1000)}
         emit({"engine": e, "k": "done", "ms": results[e]["ms"]})
@@ -340,7 +312,7 @@ def handle_send(target, text):
         proj = SETTINGS["project"]
         writable = {e: (AGENT_CFG[e]["mode"] in _WRITABLE) for e in AGENT_CFG}
     before = _snapshot(proj) if proj else {}
-    jobs = [j for j in (("claude", ask_claude), ("codex", ask_codex))
+    jobs = [j for j in (("claude", ask_claude), ("antigravity", ask_antigravity))
             if target in (j[0], "both")]
     for name, fn in jobs:
         def work(n=name, f=fn):
@@ -379,32 +351,43 @@ def _first_user_and_cwd_claude(path):
     return cwd, title[:80].replace("\n", " "), first[:80].replace("\n", " ")
 
 
-def _first_user_and_cwd_codex(path):
-    cwd, first = None, ""
+def _agy_last_conversation(cwd):
+    # agy doesn't print the conversation id; recover it from the cache it writes per workspace
     try:
-        for ln in open(path):
+        d = json.load(open(CFG["agy_last"]))
+        return d.get(cwd) or d.get(os.path.realpath(cwd))
+    except Exception:
+        return None
+
+
+def _agy_workspace_map():
+    # conversation id -> workspace path, merged from the two cache files agy maintains
+    m = {}
+    for key in ("agy_last", "agy_projects"):
+        try:
+            for ws, cid in json.load(open(CFG[key])).items():
+                if cid and ws:
+                    m.setdefault(cid, ws)
+        except Exception:
+            pass
+    return m
+
+
+def _agy_history():
+    # conversation id -> (first prompt = title, [all user prompts]); from history.jsonl
+    titles, prompts = {}, {}
+    try:
+        for ln in open(CFG["agy_history"]):
             d = json.loads(ln)
-            t = d.get("type")
-            pl = d.get("payload", {}) if isinstance(d.get("payload"), dict) else {}
-            if t == "session_meta":
-                cwd = cwd or pl.get("cwd")
-            if t == "event_msg" and pl.get("type") == "user_message" and not first:
-                first = pl.get("message", "")
-            if cwd and first:
-                break
+            cid = d.get("conversationId")
+            disp = (d.get("display") or "").replace("\n", " ").strip()
+            if not cid or not disp:
+                continue
+            titles.setdefault(cid, disp[:80])
+            prompts.setdefault(cid, []).append(disp)
     except Exception:
         pass
-    return cwd, first[:80].replace("\n", " ")
-
-
-def _codex_project_labels():
-    # Codex 'cwd path -> project display name' map (matches the Codex app UI)
-    p = CFG["codex_state"]
-    try:
-        d = json.load(open(p))
-        return d.get("electron-workspace-root-labels", {}) or {}
-    except Exception:
-        return {}
+    return titles, prompts
 
 
 def _proj_name(cwd, labels=None):
@@ -414,22 +397,6 @@ def _proj_name(cwd, labels=None):
         return "ungrouped (home)"
     base = os.path.basename((cwd or "").rstrip("/"))
     return base or cwd or "(unknown)"
-
-
-_CX_PARSE_CACHE = {}  # path -> (mtime, (cwd, first)); avoid re-reading unchanged files on frequent polls
-
-
-def _codex_meta_cached(path):
-    try:
-        mt = os.path.getmtime(path)
-    except OSError:
-        return (None, "")
-    hit = _CX_PARSE_CACHE.get(path)
-    if hit and hit[0] == mt:
-        return hit[1]
-    res = _first_user_and_cwd_codex(path)
-    _CX_PARSE_CACHE[path] = (mt, res)
-    return res
 
 
 # ---- decode Chrome Local Storage leveldb (snappy + table format) to read Claude custom groups ----
@@ -554,21 +521,6 @@ def _claude_groups():
     return groups, assign
 
 
-def _codex_title_map():
-    # Codex official title index: id -> thread_name (chronological; later wins, last-wins)
-    m = {}
-    p = CFG["codex_index"]
-    try:
-        for ln in open(p):
-            d = json.loads(ln)
-            i, nm = d.get("id"), d.get("thread_name")
-            if i and nm:
-                m[i] = nm
-    except Exception:
-        pass
-    return m
-
-
 def list_sessions(engine, limit=300, include_hidden=False):
     rows = []
     if engine == "claude":
@@ -602,35 +554,35 @@ def list_sessions(engine, limit=300, include_hidden=False):
         rows.sort(key=lambda r: r["ts"], reverse=True)
         return _apply_overrides("claude", rows[:limit], include_hidden)
     else:
-        titles = _codex_title_map()
-        labels = _codex_project_labels()
-        files = []
-        for dd in CODEX_DIRS:
-            files += glob.glob(os.path.join(dd, "**", "*.jsonl"), recursive=True)
+        # agy stores each conversation as an opaque <id>.pb; titles/workspace come from the cache + history
+        ws_map = _agy_workspace_map()
+        titles, _ = _agy_history()
+        files = glob.glob(os.path.join(AGY_CONVS, "*.pb"))
         files.sort(key=os.path.getmtime, reverse=True)
         for f in files[:limit]:
-            cwd, first = _codex_meta_cached(f)
-            cwd = cwd or HERE
-            m = UUID_RE.search(os.path.basename(f))
-            sid = m.group(0) if m else None
-            if sid:
-                rows.append({"id": sid, "cwd": cwd, "project": _proj_name(cwd, labels),
-                             "title": titles.get(sid, ""), "first": first,
-                             "ts": int(os.path.getmtime(f))})
-    return _apply_overrides("codex", rows, include_hidden)
+            sid = os.path.basename(f)[:-3]  # strip ".pb"
+            cwd = ws_map.get(sid) or HERE
+            rows.append({"id": sid, "cwd": cwd, "project": _proj_name(cwd),
+                         "title": titles.get(sid, ""), "first": "",
+                         "ts": int(os.path.getmtime(f))})
+    return _apply_overrides("antigravity", rows, include_hidden)
 
 
 def _find_file(engine, sid):
-    if engine == "claude":
-        hits = glob.glob(os.path.join(CLAUDE_PROJ, "*", sid + ".jsonl"))
-    else:
-        hits = []
-        for d in CODEX_DIRS:
-            hits += glob.glob(os.path.join(d, "**", f"*{sid}*.jsonl"), recursive=True)
+    # only Claude keeps readable jsonl transcripts on disk; agy transcripts are opaque protobuf
+    hits = glob.glob(os.path.join(CLAUDE_PROJ, "*", sid + ".jsonl"))
     return hits[0] if hits else None
 
 
 def read_transcript(engine, sid):
+    if engine != "claude":
+        # agy conversations are stored as opaque protobuf; only the user prompts are recoverable (history.jsonl)
+        _, prompts = _agy_history()
+        msgs = [{"role": "user", "text": p} for p in prompts.get(sid, [])]
+        if msgs:
+            msgs.append({"role": "bot",
+                         "text": "[Antigravity replies aren't stored in a readable form — resume the session to continue it.]"})
+        return msgs[-200:]
     f = _find_file(engine, sid)
     if not f:
         return []
@@ -640,24 +592,16 @@ def read_transcript(engine, sid):
             d = json.loads(ln)
         except Exception:
             continue
-        if engine == "claude":
-            t = d.get("type")
-            if t in ("user", "assistant"):
-                c = d.get("message", {}).get("content")
-                txt = ""
-                if isinstance(c, str):
-                    txt = c
-                elif isinstance(c, list):
-                    txt = "".join(b.get("text", "") for b in c if b.get("type") == "text")
-                if txt.strip():
-                    msgs.append({"role": "user" if t == "user" else "bot", "text": txt})
-        else:
-            pl = d.get("payload", {}) if isinstance(d.get("payload"), dict) else {}
-            if d.get("type") == "event_msg":
-                if pl.get("type") == "user_message":
-                    msgs.append({"role": "user", "text": pl.get("message", "")})
-                elif pl.get("type") == "agent_message":
-                    msgs.append({"role": "bot", "text": pl.get("message", "")})
+        t = d.get("type")
+        if t in ("user", "assistant"):
+            c = d.get("message", {}).get("content")
+            txt = ""
+            if isinstance(c, str):
+                txt = c
+            elif isinstance(c, list):
+                txt = "".join(b.get("text", "") for b in c if b.get("type") == "text")
+            if txt.strip():
+                msgs.append({"role": "user" if t == "user" else "bot", "text": txt})
     return msgs[-200:]
 
 
@@ -673,9 +617,10 @@ def _iso_epoch(s):
 
 
 def token_stats(window_sec=86400):
+    # Only Claude writes per-turn usage to disk; agy keeps usage inside its protobuf store, so it has no card here.
     cutoff = time.time() - window_sec
-    out = {v: {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
-               "cost": 0.0, "sessions": 0} for v in ("claude", "codex")}
+    out = {"claude": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+                      "cost": 0.0, "sessions": 0}}
     # Claude: sum each assistant message by its own timestamp (only within the window); input and cache_read are separate
     for f in glob.glob(os.path.join(CLAUDE_PROJ, "*", "*.jsonl")):
         try:
@@ -703,54 +648,218 @@ def token_stats(window_sec=86400):
             pass
         if hit:
             out["claude"]["sessions"] += 1
-    # Codex: token_count is cumulative; window delta = last-in-window minus last-before-window
-    for dd in CODEX_DIRS:
-        for f in glob.glob(os.path.join(dd, "**", "*.jsonl"), recursive=True):
-            try:
-                if os.path.getmtime(f) < cutoff:
-                    continue
-            except OSError:
-                continue
-            base, latest = None, None
-            try:
-                for ln in open(f):
-                    d = json.loads(ln)
-                    pl = d.get("payload", {}) if isinstance(d.get("payload"), dict) else {}
-                    if pl.get("type") != "token_count":
-                        continue
-                    tu = pl.get("info", {}).get("total_token_usage")
-                    if not tu:
-                        continue
-                    ep = _iso_epoch(d.get("timestamp"))
-                    if ep is not None and ep < cutoff:
-                        base = tu
-                    else:
-                        latest = tu
-            except Exception:
-                pass
-            if latest:
-                b = base or {}
-                a = out["codex"]
-                a["input"] += max(latest.get("input_tokens", 0) - b.get("input_tokens", 0), 0)
-                a["output"] += max(latest.get("output_tokens", 0) - b.get("output_tokens", 0), 0)
-                a["cache_read"] += max(latest.get("cached_input_tokens", 0) - b.get("cached_input_tokens", 0), 0)
-                a["sessions"] += 1
-    for v in ("claude", "codex"):
-        a = out[v]
-        p = PRICING[v]
-        # Claude: input excludes cache_read; Codex: input includes cache_read, subtract it
-        billable_in = a["input"] - a["cache_read"] if v == "codex" else a["input"]
-        billable_in = max(billable_in, 0)
-        a["cost"] = round(billable_in / 1e6 * p["input"] + a["output"] / 1e6 * p["output"]
-                          + a["cache_read"] / 1e6 * p["cache_read"]
-                          + a["cache_write"] / 1e6 * p["cache_write"], 2)
-        denom = billable_in + a["cache_read"] + a["cache_write"]
-        a["cache_pct"] = round(100 * a["cache_read"] / denom, 1) if denom else 0.0
-        a["total_tokens"] = billable_in + a["output"] + a["cache_read"] + a["cache_write"]
+    a = out["claude"]
+    p = PRICING["claude"]
+    a["cost"] = round(a["input"] / 1e6 * p["input"] + a["output"] / 1e6 * p["output"]
+                      + a["cache_read"] / 1e6 * p["cache_read"]
+                      + a["cache_write"] / 1e6 * p["cache_write"], 2)
+    denom = a["input"] + a["cache_read"] + a["cache_write"]
+    a["cache_pct"] = round(100 * a["cache_read"] / denom, 1) if denom else 0.0
+    a["total_tokens"] = a["input"] + a["output"] + a["cache_read"] + a["cache_write"]
     return out
 
 
+# ---------- Antigravity quota panel: real /usage data scraped from the agy TUI ----------
+# agy exposes NO usage numbers via --print, its protobuf store, or any subcommand. The only
+# source of real usage is the interactive `/usage` slash command, which is intercepted only
+# when typed into the live TUI. So we drive agy through a pseudo-terminal, type `/usage`,
+# wait for the "Models & Quota" panel to render, and parse the per-group quota gauges.
+# It reports % remaining + refresh windows (5-hour / weekly), NOT token counts or USD cost.
+_AGY_USAGE_CACHE = {"ts": 0, "data": None}
+_AGY_USAGE_TTL = 60  # the scrape takes ~10-15s, so serve a cached snapshot and refresh in the background
+_ANSI_RE = re.compile(
+    r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[()][AB0]|"
+    r"\x1b[=>PX^_].*?(?:\x1b\\|\x07)|[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_USAGE_GROUP = re.compile(r"^[A-Z][A-Z0-9 &/]*MODELS$")
+_USAGE_PCT = re.compile(r"(\d+(?:\.\d+)?)%")
+_USAGE_REMAIN = re.compile(r"(\d+)%\s*remaining")
+_USAGE_REFRESH = re.compile(r"Refreshes in ([0-9hms ]+)")
+_USAGE_MODELS = re.compile(r"Models within this group:\s*(.+)$")
+_USAGE_ACCOUNT = re.compile(r"Account:\s*(\S+)")
+
+
+def _strip_ansi(b):
+    return _ANSI_RE.sub("", b)
+
+
+def _parse_agy_usage(text):
+    # The cumulative buffer holds several redraws (the panel re-renders as quota loads), so
+    # isolate the LAST frame (everything after the final panel title) and parse only that.
+    i = text.rfind("Models & Quota")
+    if i >= 0:
+        text = text[i:]
+    groups, order = {}, []
+    account = None
+    cur_group = cur_limit = None
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        # the explanatory footer (│-prefixed) and help line repeat "weekly limit"/"5-hour
+        # limit" as prose — stop before they corrupt the parse state
+        if stripped.startswith("│") or stripped.startswith("↑/↓"):
+            break
+        line = stripped.lstrip("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣷⣯⣟⡿⢿⣻⣽└├─ ").strip()
+        if not line:
+            continue
+        m = _USAGE_ACCOUNT.search(line)
+        if m and account is None:
+            account = m.group(1)
+        if _USAGE_GROUP.match(line):
+            cur_group, cur_limit = line, None
+            if cur_group not in groups:
+                groups[cur_group] = {"group": cur_group, "models": "",
+                                     "weekly": None, "five_hour": None}
+                order.append(cur_group)
+            continue
+        if cur_group is None:
+            continue
+        mm = _USAGE_MODELS.search(line)
+        if mm:
+            groups[cur_group]["models"] = mm.group(1).strip()
+            continue
+        low = line.lower()
+        if "weekly limit" in low:
+            cur_limit = "weekly"; continue
+        if "five hour limit" in low or "5-hour limit" in low or "5 hour limit" in low:
+            cur_limit = "five_hour"; continue
+        if cur_limit is None:
+            continue
+        # data lines belonging to the current group+limit: a bar with a %, a "X% remaining
+        # · Refreshes in ..." line, or "Quota available"
+        cell = groups[cur_group].get(cur_limit) or {
+            "pct": None, "remaining_pct": None, "refresh": None, "available": False}
+        touched = False
+        if "quota available" in low:
+            cell["available"] = True
+            if cell["pct"] is None:
+                cell["pct"] = 100.0
+            touched = True
+        if line.startswith("["):  # the gauge bar carries the precise % remaining
+            pm = _USAGE_PCT.search(line)
+            if pm:
+                cell["pct"] = float(pm.group(1)); touched = True
+        rm = _USAGE_REMAIN.search(line)
+        if rm:
+            cell["remaining_pct"] = int(rm.group(1)); touched = True
+        rf = _USAGE_REFRESH.search(line)
+        if rf:
+            cell["refresh"] = rf.group(1).strip(); touched = True
+        if touched:
+            groups[cur_group][cur_limit] = cell
+    out = [groups[g] for g in order
+           if groups[g]["weekly"] or groups[g]["five_hour"]]
+    return account, out
+
+
+def _agy_usage_scrape(timeout=28):
+    # Drive `agy` through a PTY, type /usage, wait for the quota panel, return parsed data.
+    # Unix-only (pty/termios/fcntl); on any failure we return None so the card degrades to n/a.
+    if not AGY_BIN:
+        return None
+    try:
+        import pty, select, termios, fcntl
+    except Exception:
+        return None
+    pid, fd = pty.fork()
+    if pid == 0:  # child: become the agy TUI
+        try:
+            os.chdir(HERE)
+            os.environ["TERM"] = "xterm-256color"
+            os.execvp(AGY_BIN, [AGY_BIN])
+        except Exception:
+            os._exit(127)
+    try:
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 200, 0, 0))
+    except Exception:
+        pass
+    buf = b""
+    start = time.time()
+    last_data = start
+    typed = False
+    seen_panel = False
+    settle_until = None
+    try:
+        while True:
+            now = time.time()
+            if now - start > timeout:
+                break
+            r, _, _ = select.select([fd], [], [], 0.5)
+            if r:
+                try:
+                    chunk = os.read(fd, 65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                last_data = now
+            # type /usage once the TUI has rendered and gone quiet
+            if not typed and (now - start) > 5 and (now - last_data) > 1.0:
+                try:
+                    os.write(fd, b"/usage")
+                    time.sleep(0.7)
+                    os.write(fd, b"\r")
+                except OSError:
+                    break
+                typed = True
+            # once the quota panel has loaded, read a little longer then stop
+            if typed and not seen_panel:
+                txt = _strip_ansi(buf.decode("utf-8", "replace"))
+                # "Refreshes in"/"Quota available" only appear after the quota summary loads
+                if "Refreshes in" in txt or "Quota available" in txt:
+                    seen_panel = True
+                    settle_until = now + 2.0
+            if seen_panel and settle_until and now >= settle_until:
+                break
+    finally:
+        try:
+            os.kill(pid, 9)
+        except Exception:
+            pass
+        try:
+            os.waitpid(pid, 0)
+        except Exception:
+            pass
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+    text = _strip_ansi(buf.decode("utf-8", "replace"))
+    account, groups = _parse_agy_usage(text)
+    if not groups:
+        return {"available": False,
+                "reason": "no quota panel (agy not logged in, or TUI changed)"}
+    return {"available": True, "account": account, "groups": groups,
+            "fetched_at": int(time.time())}
+
+
+def agy_usage(force=False):
+    # Serve the cached snapshot (kept fresh by the background refresher). Only the very first
+    # call before the background thread has populated the cache scrapes synchronously.
+    with LOCK:
+        c = dict(_AGY_USAGE_CACHE)
+    if c["data"] is not None and not force:
+        return c["data"]
+    data = _agy_usage_scrape() or {"available": False, "reason": "unavailable"}
+    with LOCK:
+        _AGY_USAGE_CACHE.update(ts=time.time(), data=data)
+    return data
+
+
+def _agy_usage_loop():
+    # Background refresher: repopulate the cache every TTL seconds without blocking requests.
+    while True:
+        try:
+            data = _agy_usage_scrape()
+            if data is not None:
+                with LOCK:
+                    _AGY_USAGE_CACHE.update(ts=time.time(), data=data)
+        except Exception:
+            pass
+        time.sleep(_AGY_USAGE_TTL)
+
+
 # ---------- watchdog: did the AI actually change the disk, or just talk? ----------
+_BACKTICK = re.compile(r"`([^`\n]{1,120}?)`")
 _BACKTICK = re.compile(r"`([^`\n]{1,120}?)`")
 _EXT = re.compile(r"\.[A-Za-z0-9]{1,8}$")
 # claim verbs ('I did X') in English + Chinese
@@ -897,7 +1006,7 @@ class H(BaseHTTPRequestHandler):
         elif u.path == "/api/project":
             self._send(200, json.dumps({
                 "project": SETTINGS["project"],
-                "claude_cwd": STATE["claude"]["cwd"], "codex_cwd": STATE["codex"]["cwd"]}))
+                "claude_cwd": STATE["claude"]["cwd"], "antigravity_cwd": STATE["antigravity"]["cwd"]}))
         elif u.path == "/api/agent-config":
             self._send(200, json.dumps(AGENT_CFG))
         elif u.path == "/api/projects":
@@ -906,7 +1015,7 @@ class H(BaseHTTPRequestHandler):
             if SETTINGS["project"]:
                 out.append({"path": SETTINGS["project"], "label": os.path.basename(SETTINGS["project"]) + " (shared)"})
                 seen.add(SETTINGS["project"])
-            for eng in ("claude", "codex"):
+            for eng in ("claude", "antigravity"):
                 for r in list_sessions(eng, limit=300):
                     c = r.get("cwd")
                     if c and c not in seen and os.path.isdir(c):
@@ -937,13 +1046,15 @@ class H(BaseHTTPRequestHandler):
                 d = token_stats()
                 _TOK_CACHE.update(ts=now, data=d)
                 self._send(200, json.dumps(d))
+        elif u.path == "/api/agy-usage":
+            self._send(200, json.dumps(agy_usage()))
         elif u.path == "/api/behavior":
             self._send(200, json.dumps({"records": BEHAVIOR, "streak": STREAK}))
         elif u.path == "/api/engines":
             self._send(200, json.dumps({
                 "claude": {"available": bool(CLAUDE_BIN), "bin": CLAUDE_BIN,
                            "title_source": "desktop" if CLAUDE_SESS else "cli-jsonl"},
-                "codex": {"available": bool(CODEX_BIN), "bin": CODEX_BIN},
+                "antigravity": {"available": bool(AGY_BIN), "bin": AGY_BIN},
             }))
         else:
             self._send(404, "not found", "text/plain")
@@ -1015,7 +1126,7 @@ class H(BaseHTTPRequestHandler):
                 self._send(400, json.dumps({"error": "bad engine"}))
         elif self.path == "/api/session/patch":
             eng = req.get("engine"); sid = req.get("id"); patch = req.get("patch", {})
-            if eng not in ("claude", "codex") or not sid:
+            if eng not in ("claude", "antigravity") or not sid:
                 self._send(400, json.dumps({"error": "bad args"})); return
             with LOCK:
                 ov = _load_overrides()
@@ -1048,8 +1159,11 @@ class H(BaseHTTPRequestHandler):
                 self._send(400, json.dumps({"error": "bad engine"})); return
             with LOCK:
                 for k in ("model", "mode", "effort"):
-                    if k in req:
-                        AGENT_CFG[eng][k] = req[k] or ("default" if k == "mode" and eng == "claude" else ("read-only" if k == "mode" else ""))
+                    if k in req and k in AGENT_CFG[eng]:
+                        if k == "mode":
+                            AGENT_CFG[eng][k] = req[k] or ("default" if eng == "claude" else "sandbox")
+                        else:
+                            AGENT_CFG[eng][k] = req[k] or ""
                 if "fast" in req and "fast" in AGENT_CFG[eng]:
                     AGENT_CFG[eng]["fast"] = bool(req["fast"])
             self._send(200, json.dumps({"ok": True, "cfg": AGENT_CFG[eng]}))
@@ -1057,7 +1171,7 @@ class H(BaseHTTPRequestHandler):
             # clear cache = reset this agent's session; the next message starts fresh,
             # no longer re-caching the accumulated context (equivalent to /clear in Claude Code)
             eng = req.get("engine")
-            engines = ["claude", "codex"] if eng in (None, "both") else [eng]
+            engines = ["claude", "antigravity"] if eng in (None, "both") else [eng]
             with LOCK:
                 for e in engines:
                     if e in STATE:
@@ -1093,8 +1207,11 @@ if __name__ == "__main__":
         f"  platform : {SYS}",
         f"  Claude CLI : {CLAUDE_BIN or 'not found (set DUO_CLAUDE_BIN or install Claude Code)'}",
         f"  Claude titles : {'desktop app index' if CLAUDE_SESS else 'CLI projects jsonl (aiTitle)'}",
-        f"  Codex CLI  : {CODEX_BIN or 'not found (set DUO_CODEX_BIN or install Codex)'}",
-        f"  Codex home : {CFG['codex_home']}",
+        f"  Antigravity CLI : {AGY_BIN or 'not found (set DUO_AGY_BIN or install the Antigravity CLI)'}",
+        f"  Antigravity home : {CFG['agy_home']}",
     ]
     print("\n".join(banner), flush=True)
+    # keep the Antigravity /usage quota panel warm in the background (scrape is ~10-15s)
+    if AGY_BIN:
+        threading.Thread(target=_agy_usage_loop, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
